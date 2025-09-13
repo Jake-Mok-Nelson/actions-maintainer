@@ -20,6 +20,9 @@ profile.cov
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Go module cache
+pkg/
+
 # Go workspace file
 go.work
 go.work.sum

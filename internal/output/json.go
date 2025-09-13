@@ -39,7 +39,7 @@ type ActionIssue struct {
 	Repository       string `json:"repository"`
 	CurrentVersion   string `json:"current_version"`
 	SuggestedVersion string `json:"suggested_version,omitempty"`
-	IssueType        string `json:"issue_type"` // "outdated", "deprecated", "security"
+	IssueType        string `json:"issue_type"` // "outdated", "deprecated"
 	Severity         string `json:"severity"`   // "low", "medium", "high", "critical"
 	Description      string `json:"description"`
 	Context          string `json:"context"` // where the issue was found

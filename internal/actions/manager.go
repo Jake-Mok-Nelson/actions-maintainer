@@ -15,20 +15,11 @@ type Manager struct {
 
 // Rule defines a version enforcement rule for actions
 type Rule struct {
-	Repository         string          `json:"repository"`
-	LatestVersion      string          `json:"latest_version"`
-	MinimumVersion     string          `json:"minimum_version,omitempty"`
-	DeprecatedVersions []string        `json:"deprecated_versions,omitempty"`
-	SecurityIssues     []SecurityIssue `json:"security_issues,omitempty"`
-	Recommendation     string          `json:"recommendation,omitempty"`
-}
-
-// SecurityIssue represents a known security issue with specific versions
-type SecurityIssue struct {
-	Versions    []string `json:"versions"`
-	Severity    string   `json:"severity"`
-	Description string   `json:"description"`
-	CVE         string   `json:"cve,omitempty"`
+	Repository         string   `json:"repository"`
+	LatestVersion      string   `json:"latest_version"`
+	MinimumVersion     string   `json:"minimum_version,omitempty"`
+	DeprecatedVersions []string `json:"deprecated_versions,omitempty"`
+	Recommendation     string   `json:"recommendation,omitempty"`
 }
 
 // NewManager creates a new actions manager with default rules
@@ -86,24 +77,6 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 				Context:          action.Context,
 				FilePath:         action.FilePath,
 			})
-		}
-	}
-
-	// Check for security issues
-	for _, securityIssue := range rule.SecurityIssues {
-		for _, vulnerableVersion := range securityIssue.Versions {
-			if m.versionMatches(action.Version, vulnerableVersion) {
-				issues = append(issues, output.ActionIssue{
-					Repository:       action.Repository,
-					CurrentVersion:   action.Version,
-					SuggestedVersion: rule.LatestVersion,
-					IssueType:        "security",
-					Severity:         securityIssue.Severity,
-					Description:      fmt.Sprintf("Security issue: %s", securityIssue.Description),
-					Context:          action.Context,
-					FilePath:         action.FilePath,
-				})
-			}
 		}
 	}
 
@@ -218,14 +191,7 @@ func getDefaultRules() []Rule {
 			LatestVersion:      "v4",
 			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
-			SecurityIssues: []SecurityIssue{
-				{
-					Versions:    []string{"v1"},
-					Severity:    "medium",
-					Description: "Older versions may have security vulnerabilities",
-				},
-			},
-			Recommendation: "Use v4 for the latest features and security fixes",
+			Recommendation:     "Use v4 for the latest features and bug fixes",
 		},
 		{
 			Repository:         "actions/setup-node",
