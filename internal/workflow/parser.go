@@ -10,16 +10,16 @@ import (
 
 // Workflow represents a parsed GitHub Actions workflow
 type Workflow struct {
-	Name string                 `yaml:"name"`
-	On   interface{}            `yaml:"on"`
-	Jobs map[string]Job         `yaml:"jobs"`
+	Name string         `yaml:"name"`
+	On   interface{}    `yaml:"on"`
+	Jobs map[string]Job `yaml:"jobs"`
 }
 
 // Job represents a job in a workflow
 type Job struct {
-	RunsOn interface{}           `yaml:"runs-on"`
-	Uses   string               `yaml:"uses,omitempty"`
-	Steps  []Step               `yaml:"steps,omitempty"`
+	RunsOn interface{} `yaml:"runs-on"`
+	Uses   string      `yaml:"uses,omitempty"`
+	Steps  []Step      `yaml:"steps,omitempty"`
 }
 
 // Step represents a step in a job
@@ -46,9 +46,9 @@ func ParseWorkflow(content, filePath, repoFullName string) ([]ActionReference, e
 	if err := yaml.Unmarshal([]byte(content), &workflow); err != nil {
 		return nil, fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
-	
+
 	var references []ActionReference
-	
+
 	// Process each job
 	for jobName, job := range workflow.Jobs {
 		// Check if job uses a reusable workflow
@@ -61,7 +61,7 @@ func ParseWorkflow(content, filePath, repoFullName string) ([]ActionReference, e
 				references = append(references, *ref)
 			}
 		}
-		
+
 		// Process job steps
 		for stepIdx, step := range job.Steps {
 			if step.Uses != "" {
@@ -79,7 +79,7 @@ func ParseWorkflow(content, filePath, repoFullName string) ([]ActionReference, e
 			}
 		}
 	}
-	
+
 	return references, nil
 }
 
@@ -89,24 +89,24 @@ func parseActionRef(uses string, isReusable bool) *ActionReference {
 	if strings.HasPrefix(uses, "./") {
 		return nil // Skip local actions
 	}
-	
+
 	// Handle Docker actions (starting with "docker://")
 	if strings.HasPrefix(uses, "docker://") {
 		return nil // Skip Docker actions
 	}
-	
+
 	// Regular expression to parse action references
 	// Supports: owner/repo@version, owner/repo/path@version
 	re := regexp.MustCompile(`^([^/@]+/[^/@]+)(?:/[^@]*)?@(.+)$`)
 	matches := re.FindStringSubmatch(uses)
-	
+
 	if len(matches) != 3 {
 		return nil // Invalid format
 	}
-	
+
 	repository := matches[1]
 	version := matches[2]
-	
+
 	return &ActionReference{
 		Repository: repository,
 		Version:    version,
@@ -123,15 +123,15 @@ func IsVersionOutdated(current, latest string) bool {
 	if current == "main" || current == "master" {
 		return false // Branch refs are considered up-to-date
 	}
-	
+
 	// Check for major version differences (v1 vs v4, etc.)
 	currentMajor := extractMajorVersion(current)
 	latestMajor := extractMajorVersion(latest)
-	
+
 	if currentMajor != "" && latestMajor != "" {
 		return currentMajor < latestMajor
 	}
-	
+
 	return false
 }
 
@@ -149,12 +149,12 @@ func extractMajorVersion(version string) string {
 func SuggestVersionUpdate(repository, currentVersion string) string {
 	// This is a simplified implementation - in practice you'd want to
 	// fetch the latest release from GitHub API
-	
+
 	// Common version updates for popular actions
 	updates := map[string]map[string]string{
 		"actions/checkout": {
 			"v1": "v4",
-			"v2": "v4", 
+			"v2": "v4",
 			"v3": "v4",
 		},
 		"actions/setup-node": {
@@ -179,12 +179,12 @@ func SuggestVersionUpdate(repository, currentVersion string) string {
 			"v3": "v4",
 		},
 	}
-	
+
 	if repoUpdates, exists := updates[repository]; exists {
 		if newVersion, exists := repoUpdates[currentVersion]; exists {
 			return newVersion
 		}
 	}
-	
+
 	return currentVersion // No update suggestion
 }
