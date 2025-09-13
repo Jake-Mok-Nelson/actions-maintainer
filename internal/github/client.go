@@ -172,3 +172,55 @@ func (c *Client) CreatePullRequest(repo Repository, title, body, headBranch stri
 
 	return nil
 }
+
+// ResolveRef resolves a git reference (tag, branch, or SHA) to a commit SHA
+func (c *Client) ResolveRef(owner, repo, ref string) (string, error) {
+	// Try to get the reference directly
+	gitRef, _, err := c.client.Git.GetRef(c.ctx, owner, repo, "refs/tags/"+ref)
+	if err == nil && gitRef.Object != nil {
+		return gitRef.Object.GetSHA(), nil
+	}
+
+	// Try as a branch reference
+	gitRef, _, err = c.client.Git.GetRef(c.ctx, owner, repo, "refs/heads/"+ref)
+	if err == nil && gitRef.Object != nil {
+		return gitRef.Object.GetSHA(), nil
+	}
+
+	// Try to get commit directly (if ref is already a SHA)
+	commit, _, err := c.client.Git.GetCommit(c.ctx, owner, repo, ref)
+	if err == nil {
+		return commit.GetSHA(), nil
+	}
+
+	return "", fmt.Errorf("could not resolve reference %s in %s/%s", ref, owner, repo)
+}
+
+// GetTagsForRepo gets all tags for a repository and returns them with their commit SHAs
+func (c *Client) GetTagsForRepo(owner, repo string) (map[string]string, error) {
+	tags := make(map[string]string)
+
+	opts := &github.ListOptions{
+		PerPage: 100,
+	}
+
+	for {
+		repoTags, resp, err := c.client.Repositories.ListTags(c.ctx, owner, repo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list tags: %w", err)
+		}
+
+		for _, tag := range repoTags {
+			if tag.Name != nil && tag.Commit != nil && tag.Commit.SHA != nil {
+				tags[*tag.Name] = *tag.Commit.SHA
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return tags, nil
+}

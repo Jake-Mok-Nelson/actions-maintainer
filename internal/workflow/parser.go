@@ -42,6 +42,12 @@ type ActionReference struct {
 
 // ParseWorkflow parses a YAML workflow file and extracts action references
 func ParseWorkflow(content, filePath, repoFullName string) ([]ActionReference, error) {
+	return ParseWorkflowWithResolver(content, filePath, repoFullName, nil)
+}
+
+// ParseWorkflowWithResolver parses a YAML workflow file and extracts action references
+// with optional version resolution
+func ParseWorkflowWithResolver(content, filePath, repoFullName string, resolver *VersionResolver) ([]ActionReference, error) {
 	var workflow Workflow
 	if err := yaml.Unmarshal([]byte(content), &workflow); err != nil {
 		return nil, fmt.Errorf("failed to parse workflow YAML: %w", err)
