@@ -5,7 +5,7 @@ package transformer
 func (t *Transformer) loadDefaultRules() {
 	// Actions/checkout has significant changes between versions
 	// Key migration patterns:
-	// - v1 -> v4: token parameter behavior changed 
+	// - v1 -> v4: token parameter behavior changed
 	// - v2 -> v4: fetch-depth default changed, new parameters added
 	// - v3 -> v4: minimal changes, mostly performance improvements
 	t.rules["actions/checkout"] = ActionPatchRule{
@@ -13,7 +13,7 @@ func (t *Transformer) loadDefaultRules() {
 		VersionPatches: []VersionPatch{
 			{
 				FromVersion: "v1",
-				ToVersion:   "v4", 
+				ToVersion:   "v4",
 				Description: "Major upgrade from v1 to v4 with token handling and fetch behavior changes",
 				Patches: []FieldPatch{
 					{
@@ -23,14 +23,14 @@ func (t *Transformer) loadDefaultRules() {
 					},
 					{
 						Operation: OperationAdd,
-						Field:     "fetch-depth", 
+						Field:     "fetch-depth",
 						Value:     1,
 						Reason:    "v4 defaults to shallow clone (fetch-depth: 1) for better performance. Explicitly set if full history needed",
 					},
 				},
 			},
 			{
-				FromVersion: "v2", 
+				FromVersion: "v2",
 				ToVersion:   "v4",
 				Description: "Upgrade from v2 to v4 with improved defaults and new capabilities",
 				Patches: []FieldPatch{
@@ -44,7 +44,7 @@ func (t *Transformer) loadDefaultRules() {
 			},
 			{
 				FromVersion: "v3",
-				ToVersion:   "v4", 
+				ToVersion:   "v4",
 				Description: "Minor upgrade from v3 to v4 with performance improvements",
 				Patches: []FieldPatch{
 					// v3 to v4 is mostly backwards compatible, minimal patches needed
@@ -74,7 +74,7 @@ func (t *Transformer) loadDefaultRules() {
 					{
 						Operation: OperationRename,
 						Field:     "version",
-						NewField:  "node-version", 
+						NewField:  "node-version",
 						Reason:    "In v4, the 'version' parameter was renamed to 'node-version' for clarity and consistency",
 					},
 					{
@@ -87,7 +87,7 @@ func (t *Transformer) loadDefaultRules() {
 			},
 			{
 				FromVersion: "v2",
-				ToVersion:   "v4", 
+				ToVersion:   "v4",
 				Description: "Upgrade from v2 to v4 with improved caching and registry support",
 				Patches: []FieldPatch{
 					{
@@ -99,7 +99,7 @@ func (t *Transformer) loadDefaultRules() {
 					{
 						Operation: OperationAdd,
 						Field:     "cache",
-						Value:     "npm", 
+						Value:     "npm",
 						Reason:    "v4 introduces intelligent dependency caching for faster builds",
 					},
 				},
@@ -128,7 +128,7 @@ func (t *Transformer) loadDefaultRules() {
 		Repository: "actions/setup-python",
 		VersionPatches: []VersionPatch{
 			{
-				FromVersion: "v1", 
+				FromVersion: "v1",
 				ToVersion:   "v5",
 				Description: "Major upgrade from v1 to v5 with enhanced version handling and caching",
 				Patches: []FieldPatch{
@@ -140,7 +140,7 @@ func (t *Transformer) loadDefaultRules() {
 					},
 					{
 						Operation: OperationAdd,
-						Field:     "check-latest", 
+						Field:     "check-latest",
 						Value:     false,
 						Reason:    "v5 adds check-latest to control version checking behavior for better build reliability",
 					},
@@ -149,7 +149,7 @@ func (t *Transformer) loadDefaultRules() {
 			{
 				FromVersion: "v2",
 				ToVersion:   "v5",
-				Description: "Upgrade from v2 to v5 with caching and architecture improvements", 
+				Description: "Upgrade from v2 to v5 with caching and architecture improvements",
 				Patches: []FieldPatch{
 					{
 						Operation: OperationAdd,
@@ -160,7 +160,7 @@ func (t *Transformer) loadDefaultRules() {
 				},
 			},
 			{
-				FromVersion: "v3", 
+				FromVersion: "v3",
 				ToVersion:   "v5",
 				Description: "Upgrade from v3 to v5 with enhanced caching options",
 				Patches: []FieldPatch{
@@ -180,7 +180,7 @@ func (t *Transformer) loadDefaultRules() {
 					{
 						Operation: OperationAdd,
 						Field:     "allow-prereleases",
-						Value:     false, 
+						Value:     false,
 						Reason:    "v5 adds allow-prereleases parameter for better control over Python version selection",
 					},
 				},
@@ -192,7 +192,7 @@ func (t *Transformer) loadDefaultRules() {
 	// Key migration patterns:
 	// - v1/v2/v3 -> v4: completely new API design, different parameter structure
 	t.rules["actions/upload-artifact"] = ActionPatchRule{
-		Repository: "actions/upload-artifact", 
+		Repository: "actions/upload-artifact",
 		VersionPatches: []VersionPatch{
 			{
 				FromVersion: "v1",
@@ -214,7 +214,7 @@ func (t *Transformer) loadDefaultRules() {
 				},
 			},
 			{
-				FromVersion: "v2", 
+				FromVersion: "v2",
 				ToVersion:   "v4",
 				Description: "Breaking upgrade from v2 to v4 with enhanced artifact handling",
 				Patches: []FieldPatch{
@@ -234,7 +234,7 @@ func (t *Transformer) loadDefaultRules() {
 			},
 			{
 				FromVersion: "v3",
-				ToVersion:   "v4", 
+				ToVersion:   "v4",
 				Description: "Breaking upgrade from v3 to v4 with new artifact backend",
 				Patches: []FieldPatch{
 					{
@@ -259,7 +259,7 @@ func (t *Transformer) loadDefaultRules() {
 		VersionPatches: []VersionPatch{
 			{
 				FromVersion: "v1",
-				ToVersion:   "v4", 
+				ToVersion:   "v4",
 				Description: "Major upgrade from v1 to v4 with new download API",
 				Patches: []FieldPatch{
 					{
@@ -273,7 +273,7 @@ func (t *Transformer) loadDefaultRules() {
 			{
 				FromVersion: "v2",
 				ToVersion:   "v4",
-				Description: "Breaking upgrade from v2 to v4 with enhanced download capabilities", 
+				Description: "Breaking upgrade from v2 to v4 with enhanced download capabilities",
 				Patches: []FieldPatch{
 					{
 						Operation: OperationAdd,
@@ -291,7 +291,7 @@ func (t *Transformer) loadDefaultRules() {
 					{
 						Operation: OperationRemove,
 						Field:     "workflow",
-						Reason:    "v4 removes workflow parameter as artifact resolution is now automatic", 
+						Reason:    "v4 removes workflow parameter as artifact resolution is now automatic",
 					},
 					{
 						Operation: OperationAdd,
@@ -362,12 +362,12 @@ func (t *Transformer) loadDefaultRules() {
 		VersionPatches: []VersionPatch{
 			{
 				FromVersion: "v3",
-				ToVersion:   "v4", 
+				ToVersion:   "v4",
 				Description: "Upgrade from v3 to v4 with improved Java distribution support",
 				Patches: []FieldPatch{
 					{
 						Operation: OperationAdd,
-						Field:     "cache-dependency-path", 
+						Field:     "cache-dependency-path",
 						Value:     "pom.xml",
 						Reason:    "v4 enhances dependency caching with configurable dependency file paths",
 					},

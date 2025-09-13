@@ -176,7 +176,7 @@ func TestGetSupportedActions(t *testing.T) {
 	// Check for some expected actions
 	expectedActions := []string{
 		"actions/checkout",
-		"actions/setup-node", 
+		"actions/setup-node",
 		"actions/setup-python",
 		"actions/upload-artifact",
 	}

@@ -2,10 +2,10 @@ package transformer
 
 import (
 	"fmt"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
+	"gopkg.in/yaml.v3"
 	"regexp"
 	"strings"
-	"gopkg.in/yaml.v3"
-	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
 // WorkflowTransformer provides high-level workflow transformation capabilities
@@ -58,24 +58,24 @@ func (wt *WorkflowTransformer) TransformStep(step *workflow.Step, fromVersion, t
 	if step.Uses == "" {
 		return nil, fmt.Errorf("step does not use an action")
 	}
-	
+
 	// Parse the action reference to get repository name
 	actionRef := parseActionRef(step.Uses)
 	if actionRef == nil {
 		return nil, fmt.Errorf("failed to parse action reference: %s", step.Uses)
 	}
-	
+
 	// Apply patches to the with block
 	result, err := wt.transformer.ApplyPatches(actionRef.Repository, fromVersion, toVersion, step.With)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply patches: %w", err)
 	}
-	
+
 	// Update the step's with block if patches were applied
 	if result.Applied {
 		step.With = result.UpdatedWith
 	}
-	
+
 	return result, nil
 }
 
@@ -87,10 +87,10 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 	if err := yaml.Unmarshal([]byte(content), &workflow); err != nil {
 		return content, nil, fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
-	
+
 	var allChanges []string
 	transformationApplied := false
-	
+
 	// Process each job
 	for jobName, job := range workflow.Jobs {
 		// Process job steps
@@ -98,7 +98,7 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 			if step.Uses == "" {
 				continue
 			}
-			
+
 			// Check if this step needs transformation
 			for _, update := range updates {
 				if wt.stepMatchesUpdate(&step, update) {
@@ -107,12 +107,12 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 					if err != nil {
 						return content, allChanges, fmt.Errorf("failed to transform step in job %s, step %d: %w", jobName, stepIdx, err)
 					}
-					
+
 					if result.Applied {
 						// Update the step in the workflow
 						workflow.Jobs[jobName].Steps[stepIdx] = step
 						transformationApplied = true
-						
+
 						// Add changes to the list
 						for _, change := range result.Changes {
 							changeDescription := fmt.Sprintf("Job '%s', Step %d: %s", jobName, stepIdx+1, change)
@@ -124,27 +124,27 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 			}
 		}
 	}
-	
+
 	// If no transformations were applied, return original content
 	if !transformationApplied {
 		return content, allChanges, nil
 	}
-	
+
 	// Marshal the updated workflow back to YAML
 	updatedData, err := yaml.Marshal(&workflow)
 	if err != nil {
 		return content, allChanges, fmt.Errorf("failed to marshal updated workflow: %w", err)
 	}
-	
+
 	return string(updatedData), allChanges, nil
 }
 
 // ActionVersionUpdate represents an action version update that needs transformation
 type ActionVersionUpdate struct {
-	ActionRepo    string
-	FromVersion   string
-	ToVersion     string
-	FilePath      string // workflow file path for context
+	ActionRepo  string
+	FromVersion string
+	ToVersion   string
+	FilePath    string // workflow file path for context
 }
 
 // stepMatchesUpdate checks if a step matches an action version update
@@ -152,13 +152,13 @@ func (wt *WorkflowTransformer) stepMatchesUpdate(step *workflow.Step, update Act
 	if step.Uses == "" {
 		return false
 	}
-	
+
 	// Parse the action reference
 	actionRef := parseActionRef(step.Uses)
 	if actionRef == nil {
 		return false
 	}
-	
+
 	// Check if repository and current version match
 	return actionRef.Repository == update.ActionRepo && actionRef.Version == update.FromVersion
 }
@@ -167,11 +167,11 @@ func (wt *WorkflowTransformer) stepMatchesUpdate(step *workflow.Step, update Act
 func (wt *WorkflowTransformer) GetSupportedActions() []string {
 	rules := wt.transformer.GetPatchRules()
 	actions := make([]string, 0, len(rules))
-	
+
 	for repo := range rules {
 		actions = append(actions, repo)
 	}
-	
+
 	return actions
 }
 
@@ -182,14 +182,14 @@ func (wt *WorkflowTransformer) GetPatchInfo(repository, fromVersion, toVersion s
 	if !exists {
 		return nil, false
 	}
-	
+
 	// Find the version patch
 	for _, patch := range rule.VersionPatches {
 		if patch.FromVersion == fromVersion && patch.ToVersion == toVersion {
 			return &patch, true
 		}
 	}
-	
+
 	return nil, false
 }
 
@@ -203,12 +203,12 @@ func (wt *WorkflowTransformer) PreviewChanges(repository, fromVersion, toVersion
 		if err != nil {
 			return nil, fmt.Errorf("failed to copy with block for preview: %w", err)
 		}
-		
+
 		if err := yaml.Unmarshal(data, &withCopy); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal with block copy: %w", err)
 		}
 	}
-	
+
 	// Apply patches to the copy
 	return wt.transformer.ApplyPatches(repository, fromVersion, toVersion, withCopy)
 }

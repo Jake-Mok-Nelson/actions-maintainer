@@ -44,9 +44,9 @@ type ActionPatchRule struct {
 
 // PatchResult represents the result of applying patches
 type PatchResult struct {
-	Applied    bool     `json:"applied"`
-	Changes    []string `json:"changes"`    // Description of changes made
-	Warnings   []string `json:"warnings"`   // Non-critical issues
+	Applied      bool        `json:"applied"`
+	Changes      []string    `json:"changes"`       // Description of changes made
+	Warnings     []string    `json:"warnings"`      // Non-critical issues
 	OriginalWith interface{} `json:"original_with"` // Original with block for reference
 	UpdatedWith  interface{} `json:"updated_with"`  // Updated with block
 }
@@ -61,10 +61,10 @@ func NewTransformer() *Transformer {
 	transformer := &Transformer{
 		rules: make(map[string]ActionPatchRule),
 	}
-	
+
 	// Load default patch rules for common actions
 	transformer.loadDefaultRules()
-	
+
 	return transformer
 }
 
@@ -78,13 +78,13 @@ func (t *Transformer) ApplyPatches(repository, fromVersion, toVersion string, wi
 		OriginalWith: withBlock,
 		UpdatedWith:  withBlock,
 	}
-	
+
 	// Find the patch rule for this repository
 	rule, exists := t.rules[repository]
 	if !exists {
 		return result, nil // No patch rules defined for this action
 	}
-	
+
 	// Find the appropriate version patch
 	var versionPatch *VersionPatch
 	for _, patch := range rule.VersionPatches {
@@ -93,22 +93,22 @@ func (t *Transformer) ApplyPatches(repository, fromVersion, toVersion string, wi
 			break
 		}
 	}
-	
+
 	if versionPatch == nil {
 		return result, nil // No specific patch for this version transition
 	}
-	
+
 	// Apply the patches
 	updatedWith, changes, warnings, err := t.applyVersionPatch(withBlock, *versionPatch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply patches: %w", err)
 	}
-	
+
 	result.Applied = len(changes) > 0
 	result.Changes = changes
 	result.Warnings = warnings
 	result.UpdatedWith = updatedWith
-	
+
 	return result, nil
 }
 
@@ -116,20 +116,20 @@ func (t *Transformer) ApplyPatches(repository, fromVersion, toVersion string, wi
 func (t *Transformer) applyVersionPatch(withBlock interface{}, patch VersionPatch) (interface{}, []string, []string, error) {
 	var changes []string
 	var warnings []string
-	
+
 	// Convert with block to a map for easier manipulation
 	withMap, err := t.toMap(withBlock)
 	if err != nil {
 		return withBlock, changes, warnings, fmt.Errorf("failed to convert with block to map: %w", err)
 	}
-	
+
 	// Apply each field patch
 	for _, fieldPatch := range patch.Patches {
 		change, warning, err := t.applyFieldPatch(withMap, fieldPatch)
 		if err != nil {
 			return withBlock, changes, warnings, fmt.Errorf("failed to apply field patch: %w", err)
 		}
-		
+
 		if change != "" {
 			changes = append(changes, change)
 		}
@@ -137,7 +137,7 @@ func (t *Transformer) applyVersionPatch(withBlock interface{}, patch VersionPatc
 			warnings = append(warnings, warning)
 		}
 	}
-	
+
 	return withMap, changes, warnings, nil
 }
 
@@ -163,7 +163,7 @@ func (t *Transformer) applyAddPatch(withMap map[string]interface{}, patch FieldP
 		warning := fmt.Sprintf("Field %s already exists, skipping add operation", patch.Field)
 		return "", warning, nil
 	}
-	
+
 	withMap[patch.Field] = patch.Value
 	change := fmt.Sprintf("Added field '%s' with value '%v' (%s)", patch.Field, patch.Value, patch.Reason)
 	return change, "", nil
@@ -175,7 +175,7 @@ func (t *Transformer) applyRemovePatch(withMap map[string]interface{}, patch Fie
 		warning := fmt.Sprintf("Field %s does not exist, skipping remove operation", patch.Field)
 		return "", warning, nil
 	}
-	
+
 	delete(withMap, patch.Field)
 	change := fmt.Sprintf("Removed field '%s' (%s)", patch.Field, patch.Reason)
 	return change, "", nil
@@ -186,18 +186,18 @@ func (t *Transformer) applyRenamePatch(withMap map[string]interface{}, patch Fie
 	if patch.NewField == "" {
 		return "", "", fmt.Errorf("new_field must be specified for rename operation")
 	}
-	
+
 	value, exists := withMap[patch.Field]
 	if !exists {
 		warning := fmt.Sprintf("Field %s does not exist, skipping rename operation", patch.Field)
 		return "", warning, nil
 	}
-	
+
 	if _, newExists := withMap[patch.NewField]; newExists {
 		warning := fmt.Sprintf("Target field %s already exists, skipping rename operation", patch.NewField)
 		return "", warning, nil
 	}
-	
+
 	withMap[patch.NewField] = value
 	delete(withMap, patch.Field)
 	change := fmt.Sprintf("Renamed field '%s' to '%s' (%s)", patch.Field, patch.NewField, patch.Reason)
@@ -210,7 +210,7 @@ func (t *Transformer) applyModifyPatch(withMap map[string]interface{}, patch Fie
 		warning := fmt.Sprintf("Field %s does not exist, skipping modify operation", patch.Field)
 		return "", warning, nil
 	}
-	
+
 	oldValue := withMap[patch.Field]
 	withMap[patch.Field] = patch.Value
 	change := fmt.Sprintf("Modified field '%s' from '%v' to '%v' (%s)", patch.Field, oldValue, patch.Value, patch.Reason)
@@ -222,7 +222,7 @@ func (t *Transformer) toMap(input interface{}) (map[string]interface{}, error) {
 	if input == nil {
 		return make(map[string]interface{}), nil
 	}
-	
+
 	switch v := input.(type) {
 	case map[string]interface{}:
 		return v, nil
@@ -243,12 +243,12 @@ func (t *Transformer) toMap(input interface{}) (map[string]interface{}, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal input to YAML: %w", err)
 		}
-		
+
 		var result map[string]interface{}
 		if err := yaml.Unmarshal(data, &result); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal YAML to map: %w", err)
 		}
-		
+
 		return result, nil
 	}
 }

@@ -36,16 +36,16 @@ type WorkflowFileResult struct {
 
 // ActionIssue represents an issue with an action (outdated version, deprecated, etc.)
 type ActionIssue struct {
-	Repository         string                 `json:"repository"`
-	CurrentVersion     string                 `json:"current_version"`
-	SuggestedVersion   string                 `json:"suggested_version,omitempty"`
-	IssueType          string                 `json:"issue_type"` // "outdated", "deprecated"
-	Severity           string                 `json:"severity"`   // "low", "medium", "high", "critical"
-	Description        string                 `json:"description"`
-	Context            string                 `json:"context"` // where the issue was found
-	FilePath           string                 `json:"file_path"`
-	SchemaChanges      []string               `json:"schema_changes,omitempty"`      // Description of schema changes that will be applied
-	HasTransformations bool                   `json:"has_transformations,omitempty"` // Whether this upgrade includes schema transformations
+	Repository         string   `json:"repository"`
+	CurrentVersion     string   `json:"current_version"`
+	SuggestedVersion   string   `json:"suggested_version,omitempty"`
+	IssueType          string   `json:"issue_type"` // "outdated", "deprecated"
+	Severity           string   `json:"severity"`   // "low", "medium", "high", "critical"
+	Description        string   `json:"description"`
+	Context            string   `json:"context"` // where the issue was found
+	FilePath           string   `json:"file_path"`
+	SchemaChanges      []string `json:"schema_changes,omitempty"`      // Description of schema changes that will be applied
+	HasTransformations bool     `json:"has_transformations,omitempty"` // Whether this upgrade includes schema transformations
 }
 
 // Summary provides aggregate statistics about the scan

@@ -65,19 +65,19 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			Context:          action.Context,
 			FilePath:         action.FilePath,
 		}
-		
+
 		// Check if there are schema transformations for this version upgrade
 		if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.LatestVersion); hasPatches {
 			issue.HasTransformations = true
 			issue.SchemaChanges = []string{patchInfo.Description}
-			
+
 			// Add details about specific field changes
 			for _, patch := range patchInfo.Patches {
 				change := fmt.Sprintf("%s: %s", patch.Operation, patch.Reason)
 				issue.SchemaChanges = append(issue.SchemaChanges, change)
 			}
 		}
-		
+
 		issues = append(issues, issue)
 	}
 
@@ -94,19 +94,19 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 				Context:          action.Context,
 				FilePath:         action.FilePath,
 			}
-			
+
 			// Check if there are schema transformations for this version upgrade
 			if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.LatestVersion); hasPatches {
 				issue.HasTransformations = true
 				issue.SchemaChanges = []string{patchInfo.Description}
-				
+
 				// Add details about specific field changes
 				for _, patch := range patchInfo.Patches {
 					change := fmt.Sprintf("%s: %s", patch.Operation, patch.Reason)
 					issue.SchemaChanges = append(issue.SchemaChanges, change)
 				}
 			}
-			
+
 			issues = append(issues, issue)
 		}
 	}

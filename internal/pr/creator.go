@@ -237,7 +237,7 @@ func (c *Creator) UpdateWorkflowContentWithTransformations(content string, updat
 		return content, nil, fmt.Errorf("failed to apply transformations: %w", err)
 	}
 
-	// Update version references  
+	// Update version references
 	finalContent := UpdateWorkflowContent(updatedContent, updates)
 
 	return finalContent, changes, nil
