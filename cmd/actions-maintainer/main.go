@@ -51,7 +51,7 @@ func main() {
 			},
 			{
 				Name:     "token",
-				Short:    "t", 
+				Short:    "t",
 				Usage:    `--token <token>`,
 				Help:     `GitHub personal access token (or set GITHUB_TOKEN env var)`,
 				Variable: true,
@@ -85,41 +85,41 @@ func handleScan(ctx climax.Context) int {
 	createPRs := ctx.Is("create-prs")
 
 	fmt.Printf("Scanning repositories for owner: %s\n", owner)
-	
+
 	// Initialize components
 	githubClient := github.NewClient(token)
 	actionManager := actions.NewManager()
-	
+
 	// Initialize cache
 	cacheDir := filepath.Join(os.TempDir(), "actions-maintainer")
 	os.MkdirAll(cacheDir, 0755)
 	cachePath := filepath.Join(cacheDir, "cache.db")
-	
+
 	cache, err := cache.NewCache(cachePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing cache: %v\n", err)
 		return 1
 	}
 	defer cache.Close()
-	
+
 	// Clean expired cache entries
 	cache.CleanExpired()
-	
+
 	// Check cache first
 	fmt.Printf("Checking cache for recent results...\n")
 	cachedResult, err := cache.Get(owner)
 	if err != nil {
 		fmt.Printf("Cache check failed: %v\n", err)
 	}
-	
+
 	var scanResult *output.ScanResult
-	
+
 	if cachedResult != nil {
 		fmt.Printf("Found cached results from %s\n", cachedResult.ScanTime.Format(time.RFC3339))
 		// In a real implementation, you'd unmarshal the cached results
 		fmt.Printf("Using cached results (cache implementation simplified for this demo)\n")
 	}
-	
+
 	// Perform fresh scan
 	fmt.Printf("Fetching repositories...\n")
 	repositories, err := githubClient.ListRepositories(owner)
@@ -127,32 +127,32 @@ func handleScan(ctx climax.Context) int {
 		fmt.Fprintf(os.Stderr, "Error listing repositories: %v\n", err)
 		return 1
 	}
-	
+
 	fmt.Printf("Found %d repositories\n", len(repositories))
-	
+
 	var repositoryResults []output.RepositoryResult
-	
+
 	// Scan each repository
 	for i, repo := range repositories {
 		fmt.Printf("Scanning repository %d/%d: %s\n", i+1, len(repositories), repo.FullName)
-		
+
 		// Get workflow files
 		workflowFiles, err := githubClient.GetWorkflowFiles(repo)
 		if err != nil {
 			fmt.Printf("Warning: Failed to get workflow files for %s: %v\n", repo.FullName, err)
 			continue
 		}
-		
+
 		if len(workflowFiles) == 0 {
 			fmt.Printf("  No workflow files found\n")
 			continue
 		}
-		
+
 		fmt.Printf("  Found %d workflow files\n", len(workflowFiles))
-		
+
 		var repoActions []workflow.ActionReference
 		var workflowFileResults []output.WorkflowFileResult
-		
+
 		// Parse each workflow file
 		for _, wf := range workflowFiles {
 			actions, err := workflow.ParseWorkflow(wf.Content, wf.Path, repo.FullName)
@@ -160,9 +160,9 @@ func handleScan(ctx climax.Context) int {
 				fmt.Printf("  Warning: Failed to parse %s: %v\n", wf.Path, err)
 				continue
 			}
-			
+
 			fmt.Printf("    %s: %d actions\n", wf.Path, len(actions))
-			
+
 			repoActions = append(repoActions, actions...)
 			workflowFileResults = append(workflowFileResults, output.WorkflowFileResult{
 				Path:        wf.Path,
@@ -170,14 +170,14 @@ func handleScan(ctx climax.Context) int {
 				Actions:     actions,
 			})
 		}
-		
+
 		// Analyze actions for issues
 		issues := actionManager.AnalyzeActions(repoActions)
-		
+
 		if len(issues) > 0 {
 			fmt.Printf("  Found %d issues\n", len(issues))
 		}
-		
+
 		repositoryResults = append(repositoryResults, output.RepositoryResult{
 			Name:          repo.Name,
 			FullName:      repo.FullName,
@@ -187,15 +187,15 @@ func handleScan(ctx climax.Context) int {
 			Issues:        issues,
 		})
 	}
-	
+
 	// Build final scan result
 	scanResult = output.BuildScanResult(owner, repositoryResults)
-	
+
 	// Cache the results (TTL: 1 hour)
 	if err := cache.Set(owner, scanResult, time.Hour); err != nil {
 		fmt.Printf("Warning: Failed to cache results: %v\n", err)
 	}
-	
+
 	// Output results
 	var outputWriter *os.File
 	if outputFile != "" {
@@ -209,18 +209,18 @@ func handleScan(ctx climax.Context) int {
 	} else {
 		outputWriter = os.Stdout
 	}
-	
+
 	if err := output.FormatJSON(scanResult, outputWriter, true); err != nil {
 		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
 		return 1
 	}
-	
+
 	// Create PRs if requested
 	if createPRs {
 		fmt.Printf("\nCreating pull requests for updates...\n")
 		prCreator := pr.NewCreator(githubClient)
 		updatePlans := pr.PlanUpdates(repositoryResults)
-		
+
 		if len(updatePlans) == 0 {
 			fmt.Printf("No updates needed - all actions are up to date!\n")
 		} else {
@@ -230,23 +230,23 @@ func handleScan(ctx climax.Context) int {
 			}
 		}
 	}
-	
+
 	// Print summary
 	fmt.Printf("\nScan complete!\n")
 	fmt.Printf("- Repositories scanned: %d\n", scanResult.Summary.TotalRepositories)
 	fmt.Printf("- Workflow files found: %d\n", scanResult.Summary.TotalWorkflowFiles)
 	fmt.Printf("- Actions analyzed: %d\n", scanResult.Summary.TotalActions)
 	fmt.Printf("- Unique actions: %d\n", len(scanResult.Summary.UniqueActions))
-	
+
 	totalIssues := 0
 	for _, count := range scanResult.Summary.IssuesByType {
 		totalIssues += count
 	}
 	fmt.Printf("- Issues found: %d\n", totalIssues)
-	
+
 	if outputFile != "" {
 		fmt.Printf("- Results saved to: %s\n", outputFile)
 	}
-	
+
 	return 0
 }

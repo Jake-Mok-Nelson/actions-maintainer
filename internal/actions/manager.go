@@ -15,12 +15,12 @@ type Manager struct {
 
 // Rule defines a version enforcement rule for actions
 type Rule struct {
-	Repository      string   `json:"repository"`
-	LatestVersion   string   `json:"latest_version"`
-	MinimumVersion  string   `json:"minimum_version,omitempty"`
-	DeprecatedVersions []string `json:"deprecated_versions,omitempty"`
-	SecurityIssues  []SecurityIssue `json:"security_issues,omitempty"`
-	Recommendation  string   `json:"recommendation,omitempty"`
+	Repository         string          `json:"repository"`
+	LatestVersion      string          `json:"latest_version"`
+	MinimumVersion     string          `json:"minimum_version,omitempty"`
+	DeprecatedVersions []string        `json:"deprecated_versions,omitempty"`
+	SecurityIssues     []SecurityIssue `json:"security_issues,omitempty"`
+	Recommendation     string          `json:"recommendation,omitempty"`
 }
 
 // SecurityIssue represents a known security issue with specific versions
@@ -41,24 +41,24 @@ func NewManager() *Manager {
 // AnalyzeActions analyzes action references and identifies issues
 func (m *Manager) AnalyzeActions(actions []workflow.ActionReference) []output.ActionIssue {
 	var issues []output.ActionIssue
-	
+
 	for _, action := range actions {
 		actionIssues := m.analyzeAction(action)
 		issues = append(issues, actionIssues...)
 	}
-	
+
 	return issues
 }
 
 // analyzeAction analyzes a single action reference for issues
 func (m *Manager) analyzeAction(action workflow.ActionReference) []output.ActionIssue {
 	var issues []output.ActionIssue
-	
+
 	rule := m.findRule(action.Repository)
 	if rule == nil {
 		return issues // No rules for this action
 	}
-	
+
 	// Check for outdated versions
 	if m.isOutdated(action.Version, rule.LatestVersion) {
 		issues = append(issues, output.ActionIssue{
@@ -72,7 +72,7 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			FilePath:         action.FilePath,
 		})
 	}
-	
+
 	// Check for deprecated versions
 	for _, deprecatedVersion := range rule.DeprecatedVersions {
 		if action.Version == deprecatedVersion {
@@ -88,7 +88,7 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			})
 		}
 	}
-	
+
 	// Check for security issues
 	for _, securityIssue := range rule.SecurityIssues {
 		for _, vulnerableVersion := range securityIssue.Versions {
@@ -106,7 +106,7 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			}
 		}
 	}
-	
+
 	return issues
 }
 
@@ -125,20 +125,20 @@ func (m *Manager) isOutdated(current, latest string) bool {
 	if current == latest {
 		return false
 	}
-	
+
 	// Don't flag branch references as outdated
 	if current == "main" || current == "master" {
 		return false
 	}
-	
+
 	// Simple version comparison (in practice, use proper semver)
 	currentMajor := extractMajorVersion(current)
 	latestMajor := extractMajorVersion(latest)
-	
+
 	if currentMajor != "" && latestMajor != "" {
 		return currentMajor < latestMajor
 	}
-	
+
 	return current != latest
 }
 
@@ -150,11 +150,11 @@ func (m *Manager) determineSeverity(version string, rule *Rule) string {
 			return "high" // Below minimum version
 		}
 	}
-	
+
 	// Check major version difference
 	currentMajor := extractMajorVersion(version)
 	latestMajor := extractMajorVersion(rule.LatestVersion)
-	
+
 	if currentMajor != "" && latestMajor != "" {
 		diff := parseVersion(latestMajor) - parseVersion(currentMajor)
 		if diff >= 2 {
@@ -164,7 +164,7 @@ func (m *Manager) determineSeverity(version string, rule *Rule) string {
 			return "low" // One major version behind
 		}
 	}
-	
+
 	return "low"
 }
 
@@ -178,12 +178,12 @@ func extractMajorVersion(version string) string {
 	if strings.HasPrefix(version, "v") {
 		version = version[1:]
 	}
-	
+
 	parts := strings.Split(version, ".")
 	if len(parts) > 0 {
 		return parts[0]
 	}
-	
+
 	return version
 }
 
@@ -192,7 +192,7 @@ func parseVersion(version string) int {
 	if len(version) == 0 {
 		return 0
 	}
-	
+
 	// Simple conversion - in practice use proper semver parsing
 	switch version {
 	case "1":
@@ -214,9 +214,9 @@ func parseVersion(version string) int {
 func getDefaultRules() []Rule {
 	return []Rule{
 		{
-			Repository:    "actions/checkout",
-			LatestVersion: "v4",
-			MinimumVersion: "v3",
+			Repository:         "actions/checkout",
+			LatestVersion:      "v4",
+			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
 			SecurityIssues: []SecurityIssue{
 				{
@@ -228,42 +228,42 @@ func getDefaultRules() []Rule {
 			Recommendation: "Use v4 for the latest features and security fixes",
 		},
 		{
-			Repository:    "actions/setup-node",
-			LatestVersion: "v4",
-			MinimumVersion: "v3",
+			Repository:         "actions/setup-node",
+			LatestVersion:      "v4",
+			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
 		},
 		{
-			Repository:    "actions/setup-python",
-			LatestVersion: "v5",
-			MinimumVersion: "v4",
+			Repository:         "actions/setup-python",
+			LatestVersion:      "v5",
+			MinimumVersion:     "v4",
 			DeprecatedVersions: []string{"v1", "v2"},
 		},
 		{
-			Repository:    "actions/upload-artifact",
-			LatestVersion: "v4",
-			MinimumVersion: "v3",
+			Repository:         "actions/upload-artifact",
+			LatestVersion:      "v4",
+			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
 		},
 		{
-			Repository:    "actions/download-artifact", 
-			LatestVersion: "v4",
-			MinimumVersion: "v3",
+			Repository:         "actions/download-artifact",
+			LatestVersion:      "v4",
+			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
 		},
 		{
-			Repository:    "actions/cache",
-			LatestVersion: "v4",
+			Repository:     "actions/cache",
+			LatestVersion:  "v4",
 			MinimumVersion: "v3",
 		},
 		{
-			Repository:    "actions/setup-go",
-			LatestVersion: "v5",
+			Repository:     "actions/setup-go",
+			LatestVersion:  "v5",
 			MinimumVersion: "v4",
 		},
 		{
-			Repository:    "actions/setup-java",
-			LatestVersion: "v4",
+			Repository:     "actions/setup-java",
+			LatestVersion:  "v4",
 			MinimumVersion: "v3",
 		},
 	}
