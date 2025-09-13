@@ -145,6 +145,22 @@ func (m *Manager) isOutdated(current, latest string) bool {
 }
 
 // isOutdatedForRepository checks if a version is outdated compared to the latest for a specific repository
+//
+// Version Alias Integration:
+// This method integrates with the version resolver to provide intelligent version comparison.
+// When a resolver is available and repository is provided, it first attempts to resolve
+// both versions to their commit SHAs using the GitHub API. If the SHAs are identical,
+// the versions are considered equivalent regardless of their string representation.
+//
+// This enables scenarios like:
+// - v1 tag pointing to the same commit as v1.2.4 -> not outdated
+// - v4 and commit SHA abc123 pointing to same commit -> not outdated
+// - Branch references (main, master) -> never considered outdated
+//
+// Fallback Chain:
+// 1. Try resolver-based SHA comparison (if resolver available and repository provided)
+// 2. Fall back to traditional string-based major version comparison
+// 3. Fall back to simple string inequality check
 func (m *Manager) isOutdatedForRepository(repository, current, latest string) bool {
 	if current == latest {
 		return false

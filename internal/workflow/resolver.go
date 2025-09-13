@@ -14,6 +14,20 @@ type GitHubClient interface {
 }
 
 // VersionResolver handles resolution of version aliases to commit SHAs
+//
+// Alias Resolution Design:
+// Version aliases in GitHub Actions workflows can refer to the same underlying commit
+// using different references (e.g., v1, v1.2.4, commit SHA). This resolver enables
+// intelligent version comparison by resolving all references to their commit SHAs.
+//
+// Key Design Principles:
+// 1. Performance: Uses caching to minimize GitHub API calls with 1-hour TTL
+// 2. Resilience: Falls back to string comparison on API failures
+// 3. Flexibility: --skip-resolution flag allows purely string-based matching
+// 4. Accuracy: SHA-based comparison provides authoritative version equivalence
+//
+// Example: If v1 tag and commit SHA abc123 both point to the same commit,
+// they are considered equivalent even though the strings differ.
 type VersionResolver struct {
 	client      GitHubClient
 	skipResolve bool
@@ -194,7 +208,21 @@ func (vr *VersionResolver) getTagsWithCache(owner, repo string) (map[string]stri
 }
 
 // AreVersionsEquivalent checks if two versions are equivalent (resolve to same SHA)
-// This is used by the actions manager for version comparison
+// This is used by the actions manager for version comparison.
+//
+// Alias Resolution Logic:
+// When skipResolve is false, this method resolves both versions to their commit SHAs
+// using the GitHub API and compares the SHAs for equivalence. This allows different
+// version references (e.g., v1, v1.2.4, commit SHA) to be considered equivalent
+// if they point to the same underlying commit.
+//
+// Fallback Behavior:
+// - If skipResolve is true: Uses string comparison only
+// - If API resolution fails: Falls back to string comparison
+// - If repository format is invalid: Falls back to string comparison
+//
+// This design ensures the tool remains functional even when GitHub API access
+// is limited or unavailable, while providing enhanced accuracy when possible.
 func (vr *VersionResolver) AreVersionsEquivalent(repository, version1, version2 string) (bool, error) {
 	if vr.skipResolve {
 		// Fall back to string comparison when resolution is skipped
