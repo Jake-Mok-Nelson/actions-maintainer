@@ -99,30 +99,15 @@ func (c *Creator) generatePRBody(plan UpdatePlan) string {
 	body.WriteString("This PR updates GitHub Actions to their latest recommended versions.\n\n")
 
 	// Group updates by issue type
-	securityUpdates := []ActionUpdate{}
 	deprecatedUpdates := []ActionUpdate{}
 	outdatedUpdates := []ActionUpdate{}
 
 	for _, update := range plan.Updates {
 		switch update.Issue.IssueType {
-		case "security":
-			securityUpdates = append(securityUpdates, update)
 		case "deprecated":
 			deprecatedUpdates = append(deprecatedUpdates, update)
 		case "outdated":
 			outdatedUpdates = append(outdatedUpdates, update)
-		}
-	}
-
-	// Security updates section
-	if len(securityUpdates) > 0 {
-		body.WriteString("### 🔒 Security Updates\n\n")
-		for _, update := range securityUpdates {
-			body.WriteString(fmt.Sprintf("- **%s**: %s → %s\n",
-				update.ActionRepo, update.CurrentVersion, update.TargetVersion))
-			body.WriteString(fmt.Sprintf("  - **Issue**: %s\n", update.Issue.Description))
-			body.WriteString(fmt.Sprintf("  - **Severity**: %s\n", update.Issue.Severity))
-			body.WriteString(fmt.Sprintf("  - **File**: `%s`\n\n", update.FilePath))
 		}
 	}
 
@@ -147,7 +132,6 @@ func (c *Creator) generatePRBody(plan UpdatePlan) string {
 	}
 
 	body.WriteString("### Benefits\n\n")
-	body.WriteString("- ✅ Latest security fixes\n")
 	body.WriteString("- ✅ Improved performance\n")
 	body.WriteString("- ✅ New features and bug fixes\n")
 	body.WriteString("- ✅ Better compatibility\n\n")
