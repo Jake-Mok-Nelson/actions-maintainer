@@ -7,11 +7,13 @@ import (
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/github"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/patcher"
 )
 
 // Creator handles creating pull requests for action updates
 type Creator struct {
 	githubClient *github.Client
+	patcher      *patcher.WorkflowPatcher
 }
 
 // UpdatePlan represents a plan to update actions in a repository
@@ -33,6 +35,7 @@ type ActionUpdate struct {
 func NewCreator(githubClient *github.Client) *Creator {
 	return &Creator{
 		githubClient: githubClient,
+		patcher:      patcher.NewWorkflowPatcher(),
 	}
 }
 
@@ -213,4 +216,29 @@ func UpdateWorkflowContent(content string, updates []ActionUpdate) string {
 	}
 
 	return updatedContent
+}
+
+// UpdateWorkflowContentWithTransformations updates workflow content with both version changes and schema patches
+func (c *Creator) UpdateWorkflowContentWithTransformations(content string, updates []ActionUpdate) (string, []string, error) {
+	// Convert ActionUpdate to patcher.ActionVersionUpdate
+	patcherUpdates := make([]patcher.ActionVersionUpdate, len(updates))
+	for i, update := range updates {
+		patcherUpdates[i] = patcher.ActionVersionUpdate{
+			ActionRepo:  update.ActionRepo,
+			FromVersion: update.CurrentVersion,
+			ToVersion:   update.TargetVersion,
+			FilePath:    update.FilePath,
+		}
+	}
+
+	// Apply patches
+	updatedContent, changes, err := c.patcher.PatchWorkflowContent(content, patcherUpdates)
+	if err != nil {
+		return content, nil, fmt.Errorf("failed to apply patches: %w", err)
+	}
+
+	// Update version references
+	finalContent := UpdateWorkflowContent(updatedContent, updates)
+
+	return finalContent, changes, nil
 }
