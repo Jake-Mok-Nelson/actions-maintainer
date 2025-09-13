@@ -5,14 +5,14 @@ import (
 	"strings"
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
-	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/transformer"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/patcher"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
 // Manager handles action version management and issue detection
 type Manager struct {
-	rules       []Rule
-	transformer *transformer.WorkflowTransformer
+	rules   []Rule
+	patcher *patcher.WorkflowPatcher
 }
 
 // Rule defines a version enforcement rule for actions
@@ -27,8 +27,8 @@ type Rule struct {
 // NewManager creates a new actions manager with default rules
 func NewManager() *Manager {
 	return &Manager{
-		rules:       getDefaultRules(),
-		transformer: transformer.NewWorkflowTransformer(),
+		rules:   getDefaultRules(),
+		patcher: patcher.NewWorkflowPatcher(),
 	}
 }
 
@@ -268,17 +268,17 @@ func getDefaultRules() []Rule {
 
 // GetTransformationInfo returns information about schema transformations for a version upgrade
 // This provides insight into what changes will be made to action inputs/outputs
-func (m *Manager) GetTransformationInfo(repository, currentVersion, targetVersion string) (*transformer.VersionPatch, bool) {
-	return m.transformer.GetPatchInfo(repository, currentVersion, targetVersion)
+func (m *Manager) GetTransformationInfo(repository, currentVersion, targetVersion string) (*patcher.VersionPatch, bool) {
+	return m.patcher.GetPatchInfo(repository, currentVersion, targetVersion)
 }
 
 // PreviewTransformation shows what changes would be made to an action's with block
 // without actually applying them
-func (m *Manager) PreviewTransformation(repository, currentVersion, targetVersion string, withBlock interface{}) (*transformer.PatchResult, error) {
-	return m.transformer.PreviewChanges(repository, currentVersion, targetVersion, withBlock)
+func (m *Manager) PreviewTransformation(repository, currentVersion, targetVersion string, withBlock interface{}) (*patcher.Patch, error) {
+	return m.patcher.PreviewChanges(repository, currentVersion, targetVersion, withBlock)
 }
 
 // GetSupportedTransformations returns a list of actions that have transformation rules
 func (m *Manager) GetSupportedTransformations() []string {
-	return m.transformer.GetSupportedActions()
+	return m.patcher.GetSupportedActions()
 }

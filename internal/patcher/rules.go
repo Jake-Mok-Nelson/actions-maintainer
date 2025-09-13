@@ -1,14 +1,14 @@
-package transformer
+package patcher
 
 // loadDefaultRules loads the default patch rules for common GitHub Actions
 // These rules define how to transform action configurations when upgrading versions
-func (t *Transformer) loadDefaultRules() {
+func (p *Patcher) loadDefaultRules() {
 	// Actions/checkout has significant changes between versions
 	// Key migration patterns:
 	// - v1 -> v4: token parameter behavior changed
 	// - v2 -> v4: fetch-depth default changed, new parameters added
 	// - v3 -> v4: minimal changes, mostly performance improvements
-	t.rules["actions/checkout"] = ActionPatchRule{
+	p.rules["actions/checkout"] = ActionPatchRule{
 		Repository: "actions/checkout",
 		VersionPatches: []VersionPatch{
 			{
@@ -63,7 +63,7 @@ func (t *Transformer) loadDefaultRules() {
 	// Key migration patterns:
 	// - v1/v2 -> v4: 'version' becomes 'node-version', registry handling improved
 	// - v3 -> v4: cache parameter changes, architecture support added
-	t.rules["actions/setup-node"] = ActionPatchRule{
+	p.rules["actions/setup-node"] = ActionPatchRule{
 		Repository: "actions/setup-node",
 		VersionPatches: []VersionPatch{
 			{
@@ -124,7 +124,7 @@ func (t *Transformer) loadDefaultRules() {
 	// Key migration patterns:
 	// - v1/v2 -> v5: 'python-version' parameter handling improved, cache support added
 	// - v3/v4 -> v5: architecture and cache enhancements
-	t.rules["actions/setup-python"] = ActionPatchRule{
+	p.rules["actions/setup-python"] = ActionPatchRule{
 		Repository: "actions/setup-python",
 		VersionPatches: []VersionPatch{
 			{
@@ -191,7 +191,7 @@ func (t *Transformer) loadDefaultRules() {
 	// Actions/upload-artifact has major breaking changes in v4
 	// Key migration patterns:
 	// - v1/v2/v3 -> v4: completely new API design, different parameter structure
-	t.rules["actions/upload-artifact"] = ActionPatchRule{
+	p.rules["actions/upload-artifact"] = ActionPatchRule{
 		Repository: "actions/upload-artifact",
 		VersionPatches: []VersionPatch{
 			{
@@ -254,7 +254,7 @@ func (t *Transformer) loadDefaultRules() {
 	}
 
 	// Actions/download-artifact also has breaking changes in v4
-	t.rules["actions/download-artifact"] = ActionPatchRule{
+	p.rules["actions/download-artifact"] = ActionPatchRule{
 		Repository: "actions/download-artifact",
 		VersionPatches: []VersionPatch{
 			{
@@ -305,7 +305,7 @@ func (t *Transformer) loadDefaultRules() {
 	}
 
 	// Actions/cache has incremental improvements across versions
-	t.rules["actions/cache"] = ActionPatchRule{
+	p.rules["actions/cache"] = ActionPatchRule{
 		Repository: "actions/cache",
 		VersionPatches: []VersionPatch{
 			{
@@ -331,7 +331,7 @@ func (t *Transformer) loadDefaultRules() {
 	}
 
 	// Actions/setup-go has version parameter improvements
-	t.rules["actions/setup-go"] = ActionPatchRule{
+	p.rules["actions/setup-go"] = ActionPatchRule{
 		Repository: "actions/setup-go",
 		VersionPatches: []VersionPatch{
 			{
@@ -357,7 +357,7 @@ func (t *Transformer) loadDefaultRules() {
 	}
 
 	// Actions/setup-java parameter enhancements
-	t.rules["actions/setup-java"] = ActionPatchRule{
+	p.rules["actions/setup-java"] = ActionPatchRule{
 		Repository: "actions/setup-java",
 		VersionPatches: []VersionPatch{
 			{

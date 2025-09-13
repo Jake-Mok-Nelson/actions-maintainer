@@ -7,13 +7,13 @@ import (
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/github"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
-	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/transformer"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/patcher"
 )
 
 // Creator handles creating pull requests for action updates
 type Creator struct {
 	githubClient *github.Client
-	transformer  *transformer.WorkflowTransformer
+	patcher      *patcher.WorkflowPatcher
 }
 
 // UpdatePlan represents a plan to update actions in a repository
@@ -35,7 +35,7 @@ type ActionUpdate struct {
 func NewCreator(githubClient *github.Client) *Creator {
 	return &Creator{
 		githubClient: githubClient,
-		transformer:  transformer.NewWorkflowTransformer(),
+		patcher:      patcher.NewWorkflowPatcher(),
 	}
 }
 
@@ -218,12 +218,12 @@ func UpdateWorkflowContent(content string, updates []ActionUpdate) string {
 	return updatedContent
 }
 
-// UpdateWorkflowContentWithTransformations updates workflow content with both version changes and schema transformations
+// UpdateWorkflowContentWithTransformations updates workflow content with both version changes and schema patches
 func (c *Creator) UpdateWorkflowContentWithTransformations(content string, updates []ActionUpdate) (string, []string, error) {
-	// Convert ActionUpdate to transformer.ActionVersionUpdate
-	transformerUpdates := make([]transformer.ActionVersionUpdate, len(updates))
+	// Convert ActionUpdate to patcher.ActionVersionUpdate
+	patcherUpdates := make([]patcher.ActionVersionUpdate, len(updates))
 	for i, update := range updates {
-		transformerUpdates[i] = transformer.ActionVersionUpdate{
+		patcherUpdates[i] = patcher.ActionVersionUpdate{
 			ActionRepo:  update.ActionRepo,
 			FromVersion: update.CurrentVersion,
 			ToVersion:   update.TargetVersion,
@@ -231,10 +231,10 @@ func (c *Creator) UpdateWorkflowContentWithTransformations(content string, updat
 		}
 	}
 
-	// Apply transformations
-	updatedContent, changes, err := c.transformer.TransformWorkflowContent(content, transformerUpdates)
+	// Apply patches
+	updatedContent, changes, err := c.patcher.PatchWorkflowContent(content, patcherUpdates)
 	if err != nil {
-		return content, nil, fmt.Errorf("failed to apply transformations: %w", err)
+		return content, nil, fmt.Errorf("failed to apply patches: %w", err)
 	}
 
 	// Update version references

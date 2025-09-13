@@ -1,23 +1,24 @@
-# Transformer/Patch Component Documentation
+# Patcher Component Documentation
 
 ## Overview
 
-The transformer/patch component enables automatic schema transformations when upgrading GitHub Actions to newer versions. Instead of just updating version numbers, it intelligently modifies action input parameters to match the new version's requirements.
+The patcher component enables automatic schema patches when upgrading GitHub Actions to newer versions. Instead of just updating version numbers, it intelligently modifies action input parameters to match the new version's requirements.
 
 ## Key Features
 
 - **Declarative patch rules** for common GitHub Actions
-- **Four transformation operations**: add, remove, rename, modify fields
+- **Four patch operations**: add, remove, rename, modify fields
 - **Version-specific patches** (e.g., v2 → v4 transitions)
 - **Preview functionality** for safe testing
-- **Detailed reasoning** for each transformation
+- **Detailed reasoning** for each patch
+- **Clear categorization** of changes (additions, removals, renames, modifications)
 
 ## Supported Actions
 
-The transformer includes patch rules for these popular actions:
+The patcher includes patch rules for these popular actions:
 
-| Action | Transformations | Key Changes |
-|--------|----------------|-------------|
+| Action | Patches | Key Changes |
+|--------|---------|-------------|
 | `actions/checkout` | v1→v4, v2→v4, v3→v4 | Token handling, fetch-depth defaults |
 | `actions/setup-node` | v1→v4, v2→v4, v3→v4 | Parameter renaming (version→node-version), caching |
 | `actions/setup-python` | v1→v5, v2→v5, v3→v5, v4→v5 | Enhanced caching, dependency management |
@@ -28,6 +29,62 @@ The transformer includes patch rules for these popular actions:
 | `actions/setup-java` | v3→v4 | Enhanced caching configurations |
 
 ## How It Works
+
+### Core Components
+
+1. **Patcher**: Main engine that builds patches for action upgrades
+2. **WorkflowPatcher**: High-level interface for workflow-level patching
+3. **Patch Structure**: Clear categorization of changes by type
+
+### Patch Structure
+
+The new Patch structure provides clear visibility into what changes will be made:
+
+```go
+type Patch struct {
+    Repository  string `json:"repository"`
+    FromVersion string `json:"from_version"`
+    ToVersion   string `json:"to_version"`
+    Description string `json:"description"`
+    
+    // Clear categorization of changes
+    Additions     []FieldAddition     `json:"additions,omitempty"`
+    Removals      []FieldRemoval      `json:"removals,omitempty"`
+    Renames       []FieldRename       `json:"renames,omitempty"`
+    Modifications []FieldModification `json:"modifications,omitempty"`
+    
+    // Results after applying the patch
+    Applied      bool        `json:"applied"`
+    OriginalWith interface{} `json:"original_with"`
+    UpdatedWith  interface{} `json:"updated_with"`
+    Warnings     []string    `json:"warnings,omitempty"`
+}
+```
+
+### Building Patches
+
+The `BuildPatch` function handles conditional logic and returns a complete patch:
+
+```go
+patcher := patcher.NewPatcher()
+patch, err := patcher.BuildPatch("actions/checkout", "v1", "v4", withBlock)
+if err != nil {
+    // Handle error
+}
+
+if patch.Applied {
+    // Apply the patch
+    step.With = patch.UpdatedWith
+    
+    // Access specific changes
+    for _, addition := range patch.Additions {
+        fmt.Printf("Added: %s = %v (%s)\n", addition.Field, addition.Value, addition.Reason)
+    }
+    for _, removal := range patch.Removals {
+        fmt.Printf("Removed: %s (%s)\n", removal.Field, removal.Reason)
+    }
+}
+```
 
 ### 1. Integration with Action Analysis
 

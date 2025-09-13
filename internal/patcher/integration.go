@@ -1,4 +1,4 @@
-package transformer
+package patcher
 
 import (
 	"fmt"
@@ -8,15 +8,15 @@ import (
 	"strings"
 )
 
-// WorkflowTransformer provides high-level workflow transformation capabilities
-type WorkflowTransformer struct {
-	transformer *Transformer
+// WorkflowPatcher provides high-level workflow patching capabilities
+type WorkflowPatcher struct {
+	patcher *Patcher
 }
 
-// NewWorkflowTransformer creates a new workflow transformer
-func NewWorkflowTransformer() *WorkflowTransformer {
-	return &WorkflowTransformer{
-		transformer: NewTransformer(),
+// NewWorkflowPatcher creates a new workflow patcher
+func NewWorkflowPatcher() *WorkflowPatcher {
+	return &WorkflowPatcher{
+		patcher: NewPatcher(),
 	}
 }
 
@@ -52,9 +52,9 @@ func parseActionRef(uses string) *workflow.ActionReference {
 	}
 }
 
-// TransformStep applies patches to a workflow step when upgrading action versions
+// PatchStep applies patches to a workflow step when upgrading action versions
 // This is the integration point with the existing workflow update logic
-func (wt *WorkflowTransformer) TransformStep(step *workflow.Step, fromVersion, toVersion string) (*PatchResult, error) {
+func (wp *WorkflowPatcher) PatchStep(step *workflow.Step, fromVersion, toVersion string) (*Patch, error) {
 	if step.Uses == "" {
 		return nil, fmt.Errorf("step does not use an action")
 	}
@@ -65,23 +65,23 @@ func (wt *WorkflowTransformer) TransformStep(step *workflow.Step, fromVersion, t
 		return nil, fmt.Errorf("failed to parse action reference: %s", step.Uses)
 	}
 
-	// Apply patches to the with block
-	result, err := wt.transformer.ApplyPatches(actionRef.Repository, fromVersion, toVersion, step.With)
+	// Build patch for the with block
+	patch, err := wp.patcher.BuildPatch(actionRef.Repository, fromVersion, toVersion, step.With)
 	if err != nil {
-		return nil, fmt.Errorf("failed to apply patches: %w", err)
+		return nil, fmt.Errorf("failed to build patch: %w", err)
 	}
 
 	// Update the step's with block if patches were applied
-	if result.Applied {
-		step.With = result.UpdatedWith
+	if patch.Applied {
+		step.With = patch.UpdatedWith
 	}
 
-	return result, nil
+	return patch, nil
 }
 
-// TransformWorkflowContent applies patches to workflow YAML content during version updates
+// PatchWorkflowContent applies patches to workflow YAML content during version updates
 // This function can be used by the PR creator to apply schema changes when updating workflow files
-func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates []ActionVersionUpdate) (string, []string, error) {
+func (wp *WorkflowPatcher) PatchWorkflowContent(content string, updates []ActionVersionUpdate) (string, []string, error) {
 	// Parse the workflow
 	var workflow workflow.Workflow
 	if err := yaml.Unmarshal([]byte(content), &workflow); err != nil {
@@ -89,7 +89,7 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 	}
 
 	var allChanges []string
-	transformationApplied := false
+	patchingApplied := false
 
 	// Process each job
 	for jobName, job := range workflow.Jobs {
@@ -99,23 +99,35 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 				continue
 			}
 
-			// Check if this step needs transformation
+			// Check if this step needs patching
 			for _, update := range updates {
-				if wt.stepMatchesUpdate(&step, update) {
-					// Apply transformation
-					result, err := wt.TransformStep(&step, update.FromVersion, update.ToVersion)
+				if wp.stepMatchesUpdate(&step, update) {
+					// Apply patching
+					patch, err := wp.PatchStep(&step, update.FromVersion, update.ToVersion)
 					if err != nil {
-						return content, allChanges, fmt.Errorf("failed to transform step in job %s, step %d: %w", jobName, stepIdx, err)
+						return content, allChanges, fmt.Errorf("failed to patch step in job %s, step %d: %w", jobName, stepIdx, err)
 					}
 
-					if result.Applied {
+					if patch.Applied {
 						// Update the step in the workflow
 						workflow.Jobs[jobName].Steps[stepIdx] = step
-						transformationApplied = true
+						patchingApplied = true
 
-						// Add changes to the list
-						for _, change := range result.Changes {
-							changeDescription := fmt.Sprintf("Job '%s', Step %d: %s", jobName, stepIdx+1, change)
+						// Add changes to the list based on the new patch structure
+						for _, addition := range patch.Additions {
+							changeDescription := fmt.Sprintf("Job '%s', Step %d: Added '%s' = '%v' (%s)", jobName, stepIdx+1, addition.Field, addition.Value, addition.Reason)
+							allChanges = append(allChanges, changeDescription)
+						}
+						for _, removal := range patch.Removals {
+							changeDescription := fmt.Sprintf("Job '%s', Step %d: Removed '%s' (%s)", jobName, stepIdx+1, removal.Field, removal.Reason)
+							allChanges = append(allChanges, changeDescription)
+						}
+						for _, rename := range patch.Renames {
+							changeDescription := fmt.Sprintf("Job '%s', Step %d: Renamed '%s' to '%s' (%s)", jobName, stepIdx+1, rename.OldField, rename.NewField, rename.Reason)
+							allChanges = append(allChanges, changeDescription)
+						}
+						for _, modification := range patch.Modifications {
+							changeDescription := fmt.Sprintf("Job '%s', Step %d: Modified '%s' from '%v' to '%v' (%s)", jobName, stepIdx+1, modification.Field, modification.OldValue, modification.NewValue, modification.Reason)
 							allChanges = append(allChanges, changeDescription)
 						}
 					}
@@ -125,8 +137,8 @@ func (wt *WorkflowTransformer) TransformWorkflowContent(content string, updates 
 		}
 	}
 
-	// If no transformations were applied, return original content
-	if !transformationApplied {
+	// If no patching was applied, return original content
+	if !patchingApplied {
 		return content, allChanges, nil
 	}
 
@@ -148,7 +160,7 @@ type ActionVersionUpdate struct {
 }
 
 // stepMatchesUpdate checks if a step matches an action version update
-func (wt *WorkflowTransformer) stepMatchesUpdate(step *workflow.Step, update ActionVersionUpdate) bool {
+func (wp *WorkflowPatcher) stepMatchesUpdate(step *workflow.Step, update ActionVersionUpdate) bool {
 	if step.Uses == "" {
 		return false
 	}
@@ -164,8 +176,8 @@ func (wt *WorkflowTransformer) stepMatchesUpdate(step *workflow.Step, update Act
 }
 
 // GetSupportedActions returns a list of actions that have patch rules defined
-func (wt *WorkflowTransformer) GetSupportedActions() []string {
-	rules := wt.transformer.GetPatchRules()
+func (wp *WorkflowPatcher) GetSupportedActions() []string {
+	rules := wp.patcher.GetPatchRules()
 	actions := make([]string, 0, len(rules))
 
 	for repo := range rules {
@@ -176,8 +188,8 @@ func (wt *WorkflowTransformer) GetSupportedActions() []string {
 }
 
 // GetPatchInfo returns information about what patches would be applied for a version transition
-func (wt *WorkflowTransformer) GetPatchInfo(repository, fromVersion, toVersion string) (*VersionPatch, bool) {
-	rules := wt.transformer.GetPatchRules()
+func (wp *WorkflowPatcher) GetPatchInfo(repository, fromVersion, toVersion string) (*VersionPatch, bool) {
+	rules := wp.patcher.GetPatchRules()
 	rule, exists := rules[repository]
 	if !exists {
 		return nil, false
@@ -194,7 +206,7 @@ func (wt *WorkflowTransformer) GetPatchInfo(repository, fromVersion, toVersion s
 }
 
 // PreviewChanges shows what changes would be made without actually applying them
-func (wt *WorkflowTransformer) PreviewChanges(repository, fromVersion, toVersion string, withBlock interface{}) (*PatchResult, error) {
+func (wp *WorkflowPatcher) PreviewChanges(repository, fromVersion, toVersion string, withBlock interface{}) (*Patch, error) {
 	// Create a copy of the with block for preview
 	var withCopy interface{}
 	if withBlock != nil {
@@ -209,6 +221,11 @@ func (wt *WorkflowTransformer) PreviewChanges(repository, fromVersion, toVersion
 		}
 	}
 
-	// Apply patches to the copy
-	return wt.transformer.ApplyPatches(repository, fromVersion, toVersion, withCopy)
+	// Build patch for the copy
+	return wp.patcher.BuildPatch(repository, fromVersion, toVersion, withCopy)
+}
+
+// HasPatch checks if a patch is available for the given repository and version transition
+func (wp *WorkflowPatcher) HasPatch(repository, fromVersion, toVersion string) bool {
+	return wp.patcher.HasPatch(repository, fromVersion, toVersion)
 }
