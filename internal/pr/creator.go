@@ -7,11 +7,13 @@ import (
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/github"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/transformer"
 )
 
 // Creator handles creating pull requests for action updates
 type Creator struct {
 	githubClient *github.Client
+	transformer  *transformer.WorkflowTransformer
 }
 
 // UpdatePlan represents a plan to update actions in a repository
@@ -33,6 +35,7 @@ type ActionUpdate struct {
 func NewCreator(githubClient *github.Client) *Creator {
 	return &Creator{
 		githubClient: githubClient,
+		transformer:  transformer.NewWorkflowTransformer(),
 	}
 }
 
@@ -213,4 +216,29 @@ func UpdateWorkflowContent(content string, updates []ActionUpdate) string {
 	}
 
 	return updatedContent
+}
+
+// UpdateWorkflowContentWithTransformations updates workflow content with both version changes and schema transformations
+func (c *Creator) UpdateWorkflowContentWithTransformations(content string, updates []ActionUpdate) (string, []string, error) {
+	// Convert ActionUpdate to transformer.ActionVersionUpdate
+	transformerUpdates := make([]transformer.ActionVersionUpdate, len(updates))
+	for i, update := range updates {
+		transformerUpdates[i] = transformer.ActionVersionUpdate{
+			ActionRepo:  update.ActionRepo,
+			FromVersion: update.CurrentVersion,
+			ToVersion:   update.TargetVersion,
+			FilePath:    update.FilePath,
+		}
+	}
+
+	// Apply transformations
+	updatedContent, changes, err := c.transformer.TransformWorkflowContent(content, transformerUpdates)
+	if err != nil {
+		return content, nil, fmt.Errorf("failed to apply transformations: %w", err)
+	}
+
+	// Update version references  
+	finalContent := UpdateWorkflowContent(updatedContent, updates)
+
+	return finalContent, changes, nil
 }

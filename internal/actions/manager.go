@@ -5,12 +5,14 @@ import (
 	"strings"
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/transformer"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
 // Manager handles action version management and issue detection
 type Manager struct {
-	rules []Rule
+	rules       []Rule
+	transformer *transformer.WorkflowTransformer
 }
 
 // Rule defines a version enforcement rule for actions
@@ -25,7 +27,8 @@ type Rule struct {
 // NewManager creates a new actions manager with default rules
 func NewManager() *Manager {
 	return &Manager{
-		rules: getDefaultRules(),
+		rules:       getDefaultRules(),
+		transformer: transformer.NewWorkflowTransformer(),
 	}
 }
 
@@ -52,7 +55,7 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 
 	// Check for outdated versions
 	if m.isOutdated(action.Version, rule.LatestVersion) {
-		issues = append(issues, output.ActionIssue{
+		issue := output.ActionIssue{
 			Repository:       action.Repository,
 			CurrentVersion:   action.Version,
 			SuggestedVersion: rule.LatestVersion,
@@ -61,13 +64,27 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			Description:      fmt.Sprintf("Action %s is using version %s, latest is %s", action.Repository, action.Version, rule.LatestVersion),
 			Context:          action.Context,
 			FilePath:         action.FilePath,
-		})
+		}
+		
+		// Check if there are schema transformations for this version upgrade
+		if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.LatestVersion); hasPatches {
+			issue.HasTransformations = true
+			issue.SchemaChanges = []string{patchInfo.Description}
+			
+			// Add details about specific field changes
+			for _, patch := range patchInfo.Patches {
+				change := fmt.Sprintf("%s: %s", patch.Operation, patch.Reason)
+				issue.SchemaChanges = append(issue.SchemaChanges, change)
+			}
+		}
+		
+		issues = append(issues, issue)
 	}
 
 	// Check for deprecated versions
 	for _, deprecatedVersion := range rule.DeprecatedVersions {
 		if action.Version == deprecatedVersion {
-			issues = append(issues, output.ActionIssue{
+			issue := output.ActionIssue{
 				Repository:       action.Repository,
 				CurrentVersion:   action.Version,
 				SuggestedVersion: rule.LatestVersion,
@@ -76,7 +93,21 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 				Description:      fmt.Sprintf("Action %s version %s is deprecated", action.Repository, action.Version),
 				Context:          action.Context,
 				FilePath:         action.FilePath,
-			})
+			}
+			
+			// Check if there are schema transformations for this version upgrade
+			if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.LatestVersion); hasPatches {
+				issue.HasTransformations = true
+				issue.SchemaChanges = []string{patchInfo.Description}
+				
+				// Add details about specific field changes
+				for _, patch := range patchInfo.Patches {
+					change := fmt.Sprintf("%s: %s", patch.Operation, patch.Reason)
+					issue.SchemaChanges = append(issue.SchemaChanges, change)
+				}
+			}
+			
+			issues = append(issues, issue)
 		}
 	}
 
@@ -233,4 +264,21 @@ func getDefaultRules() []Rule {
 			MinimumVersion: "v3",
 		},
 	}
+}
+
+// GetTransformationInfo returns information about schema transformations for a version upgrade
+// This provides insight into what changes will be made to action inputs/outputs
+func (m *Manager) GetTransformationInfo(repository, currentVersion, targetVersion string) (*transformer.VersionPatch, bool) {
+	return m.transformer.GetPatchInfo(repository, currentVersion, targetVersion)
+}
+
+// PreviewTransformation shows what changes would be made to an action's with block
+// without actually applying them
+func (m *Manager) PreviewTransformation(repository, currentVersion, targetVersion string, withBlock interface{}) (*transformer.PatchResult, error) {
+	return m.transformer.PreviewChanges(repository, currentVersion, targetVersion, withBlock)
+}
+
+// GetSupportedTransformations returns a list of actions that have transformation rules
+func (m *Manager) GetSupportedTransformations() []string {
+	return m.transformer.GetSupportedActions()
 }
