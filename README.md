@@ -92,6 +92,35 @@ The tool outputs detailed JSON with the following structure:
 - **Deprecated**: Action versions that are no longer supported
 - **Security**: Action versions with known security vulnerabilities
 
+## Version Alias Resolution
+
+actions-maintainer supports intelligent version alias resolution to handle scenarios where different version references point to the same underlying commit:
+
+### Example Scenarios
+- `v1` tag and `v1.2.4` tag point to the same commit SHA
+- `v4` tag and commit SHA `abc123def456` reference the same commit
+- When `v1` is updated to point to a new release, aliases are automatically detected
+
+### Resolution Modes
+
+**Default (with resolution):**
+```bash
+actions-maintainer scan --owner myorg --token $GITHUB_TOKEN
+```
+Uses GitHub API to resolve version references to commit SHAs for accurate comparison.
+
+**String matching only:**
+```bash
+actions-maintainer scan --owner myorg --token $GITHUB_TOKEN --skip-resolution
+```
+Uses traditional string-based version comparison for faster execution or when API access is limited.
+
+### Benefits
+- **Accuracy**: Detects equivalent versions even with different reference formats
+- **Flexibility**: Supports tags, commit SHAs, and branch references
+- **Performance**: 1-hour caching reduces GitHub API calls
+- **Resilience**: Graceful fallback to string matching on API failures
+
 ## Architecture
 
 ```

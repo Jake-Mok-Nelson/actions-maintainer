@@ -31,7 +31,7 @@ func TestBasicPatchOperations(t *testing.T) {
 		t.Error("Expected changes but none were found")
 	}
 
-	t.Logf("Applied %d total changes - Additions: %d, Removals: %d, Renames: %d, Modifications: %d", 
+	t.Logf("Applied %d total changes - Additions: %d, Removals: %d, Renames: %d, Modifications: %d",
 		totalChanges, len(patch.Additions), len(patch.Removals), len(patch.Renames), len(patch.Modifications))
 }
 
@@ -74,7 +74,7 @@ func TestCheckoutV1ToV4Transformation(t *testing.T) {
 	}
 
 	// Check that the patch structure is populated correctly
-	expectedRemovals := 1 // token removal
+	expectedRemovals := 1  // token removal
 	expectedAdditions := 1 // fetch-depth addition
 	if len(patch.Removals) != expectedRemovals {
 		t.Errorf("Expected %d removals, got %d", expectedRemovals, len(patch.Removals))
@@ -125,7 +125,7 @@ func TestSetupNodeV2ToV4Transformation(t *testing.T) {
 	}
 
 	// Check the patch structure
-	expectedRenames := 1 // version -> node-version
+	expectedRenames := 1   // version -> node-version
 	expectedAdditions := 1 // cache addition
 	if len(patch.Renames) != expectedRenames {
 		t.Errorf("Expected %d renames, got %d", expectedRenames, len(patch.Renames))

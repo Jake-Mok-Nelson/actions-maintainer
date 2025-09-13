@@ -62,6 +62,13 @@ func main() {
 				Help:     `Cache provider to use (default: memory)`,
 				Variable: true,
 			},
+			{
+				Name:     "skip-resolution",
+				Short:    "s",
+				Usage:    `--skip-resolution`,
+				Help:     `Skip version alias resolution and use string matching only`,
+				Variable: false,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -89,12 +96,16 @@ func handleScan(ctx climax.Context) int {
 
 	outputFile, _ := ctx.Get("output")
 	createPRs := ctx.Is("create-prs")
+	skipResolution := ctx.Is("skip-resolution")
 
 	fmt.Printf("Scanning repositories for owner: %s\n", owner)
 
 	// Initialize components
 	githubClient := github.NewClient(token)
-	actionManager := actions.NewManager()
+
+	// Create version resolver
+	versionResolver := workflow.NewVersionResolver(githubClient, skipResolution)
+	actionManager := actions.NewManagerWithResolver(versionResolver)
 
 	// Initialize cache (only memory cache is supported)
 	cacheProvider, _ := ctx.Get("cache")

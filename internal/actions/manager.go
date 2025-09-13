@@ -11,8 +11,14 @@ import (
 
 // Manager handles action version management and issue detection
 type Manager struct {
-	rules   []Rule
-	patcher *patcher.WorkflowPatcher
+	rules    []Rule
+	patcher  *patcher.WorkflowPatcher
+	resolver VersionResolver // Interface for version resolution
+}
+
+// VersionResolver interface for resolving version aliases
+type VersionResolver interface {
+	AreVersionsEquivalent(repository, version1, version2 string) (bool, error)
 }
 
 // Rule defines a version enforcement rule for actions
@@ -29,6 +35,15 @@ func NewManager() *Manager {
 	return &Manager{
 		rules:   getDefaultRules(),
 		patcher: patcher.NewWorkflowPatcher(),
+	}
+}
+
+// NewManagerWithResolver creates a new actions manager with a version resolver
+func NewManagerWithResolver(resolver VersionResolver) *Manager {
+	return &Manager{
+		rules:    getDefaultRules(),
+		patcher:  patcher.NewWorkflowPatcher(),
+		resolver: resolver,
 	}
 }
 
@@ -54,7 +69,7 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 	}
 
 	// Check for outdated versions
-	if m.isOutdated(action.Version, rule.LatestVersion) {
+	if m.isOutdatedForRepository(action.Repository, action.Version, rule.LatestVersion) {
 		issue := output.ActionIssue{
 			Repository:       action.Repository,
 			CurrentVersion:   action.Version,
@@ -126,8 +141,38 @@ func (m *Manager) findRule(repository string) *Rule {
 
 // isOutdated checks if a version is outdated compared to the latest
 func (m *Manager) isOutdated(current, latest string) bool {
+	return m.isOutdatedForRepository("", current, latest)
+}
+
+// isOutdatedForRepository checks if a version is outdated compared to the latest for a specific repository
+//
+// Version Alias Integration:
+// This method integrates with the version resolver to provide intelligent version comparison.
+// When a resolver is available and repository is provided, it first attempts to resolve
+// both versions to their commit SHAs using the GitHub API. If the SHAs are identical,
+// the versions are considered equivalent regardless of their string representation.
+//
+// This enables scenarios like:
+// - v1 tag pointing to the same commit as v1.2.4 -> not outdated
+// - v4 and commit SHA abc123 pointing to same commit -> not outdated
+// - Branch references (main, master) -> never considered outdated
+//
+// Fallback Chain:
+// 1. Try resolver-based SHA comparison (if resolver available and repository provided)
+// 2. Fall back to traditional string-based major version comparison
+// 3. Fall back to simple string inequality check
+func (m *Manager) isOutdatedForRepository(repository, current, latest string) bool {
 	if current == latest {
 		return false
+	}
+
+	// Use version resolver if available and repository is provided
+	if m.resolver != nil && repository != "" {
+		equivalent, err := m.resolver.AreVersionsEquivalent(repository, current, latest)
+		if err == nil && equivalent {
+			return false // Versions are equivalent (same SHA)
+		}
+		// Continue with fallback logic if resolver fails or versions are not equivalent
 	}
 
 	// Don't flag branch references as outdated
