@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/tucnak/climax"
@@ -56,6 +55,13 @@ func main() {
 				Help:     `GitHub personal access token (or set GITHUB_TOKEN env var)`,
 				Variable: true,
 			},
+			{
+				Name:     "cache",
+				Short:    "c",
+				Usage:    `--cache <provider>`,
+				Help:     `Cache provider to use (default: memory)`,
+				Variable: true,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -90,24 +96,27 @@ func handleScan(ctx climax.Context) int {
 	githubClient := github.NewClient(token)
 	actionManager := actions.NewManager()
 
-	// Initialize cache
-	cacheDir := filepath.Join(os.TempDir(), "actions-maintainer")
-	os.MkdirAll(cacheDir, 0755)
-	cachePath := filepath.Join(cacheDir, "cache.db")
+	// Initialize cache (only memory cache is supported)
+	cacheProvider, _ := ctx.Get("cache")
+	if cacheProvider == "" {
+		cacheProvider = "memory"
+	}
 
-	cache, err := cache.NewCache(cachePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing cache: %v\n", err)
+	if cacheProvider != "memory" {
+		fmt.Fprintf(os.Stderr, "Error: Unsupported cache provider '%s'. Only 'memory' is supported.\n", cacheProvider)
 		return 1
 	}
-	defer cache.Close()
+
+	cacheInstance := cache.NewMemoryCache()
+	fmt.Printf("Using in-memory cache\n")
+	defer cacheInstance.Close()
 
 	// Clean expired cache entries
-	cache.CleanExpired()
+	cacheInstance.CleanExpired()
 
 	// Check cache first
 	fmt.Printf("Checking cache for recent results...\n")
-	cachedResult, err := cache.Get(owner)
+	cachedResult, err := cacheInstance.Get(owner)
 	if err != nil {
 		fmt.Printf("Cache check failed: %v\n", err)
 	}
@@ -192,7 +201,7 @@ func handleScan(ctx climax.Context) int {
 	scanResult = output.BuildScanResult(owner, repositoryResults)
 
 	// Cache the results (TTL: 1 hour)
-	if err := cache.Set(owner, scanResult, time.Hour); err != nil {
+	if err := cacheInstance.Set(owner, scanResult, time.Hour); err != nil {
 		fmt.Printf("Warning: Failed to cache results: %v\n", err)
 	}
 
