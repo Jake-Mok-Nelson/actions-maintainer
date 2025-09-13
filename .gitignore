@@ -30,3 +30,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Binary outputs
+actions-maintainer
+
+# Cache database
+*.db
+
+# Temporary files
+/tmp/
