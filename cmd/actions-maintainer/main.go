@@ -107,7 +107,7 @@ func handleScan(ctx climax.Context) int {
 		return 1
 	}
 
-	cacheInstance := cache.NewCache()
+	cacheInstance := cache.NewMemoryCache()
 	fmt.Printf("Using in-memory cache\n")
 	defer cacheInstance.Close()
 
