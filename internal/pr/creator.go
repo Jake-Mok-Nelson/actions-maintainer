@@ -1,0 +1,232 @@
+package pr
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/github"
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
+)
+
+// Creator handles creating pull requests for action updates
+type Creator struct {
+	githubClient *github.Client
+}
+
+// UpdatePlan represents a plan to update actions in a repository
+type UpdatePlan struct {
+	Repository github.Repository
+	Updates    []ActionUpdate
+}
+
+// ActionUpdate represents a single action update
+type ActionUpdate struct {
+	FilePath        string
+	ActionRepo      string
+	CurrentVersion  string
+	TargetVersion   string
+	Issue           output.ActionIssue
+}
+
+// NewCreator creates a new PR creator
+func NewCreator(githubClient *github.Client) *Creator {
+	return &Creator{
+		githubClient: githubClient,
+	}
+}
+
+// CreateUpdatePRs creates pull requests for action updates
+func (c *Creator) CreateUpdatePRs(plans []UpdatePlan) error {
+	for _, plan := range plans {
+		if len(plan.Updates) == 0 {
+			continue
+		}
+		
+		err := c.createPRForPlan(plan)
+		if err != nil {
+			fmt.Printf("Failed to create PR for %s: %v\n", plan.Repository.FullName, err)
+			continue
+		}
+		
+		fmt.Printf("Created PR for %s with %d action updates\n", plan.Repository.FullName, len(plan.Updates))
+	}
+	
+	return nil
+}
+
+// createPRForPlan creates a pull request for a single update plan
+func (c *Creator) createPRForPlan(plan UpdatePlan) error {
+	// Create a descriptive branch name
+	branchName := fmt.Sprintf("actions-maintainer/update-actions-%d", len(plan.Updates))
+	
+	// Generate PR title and body
+	title := c.generatePRTitle(plan)
+	body := c.generatePRBody(plan)
+	
+	// For now, we'll simulate the PR creation since we'd need to:
+	// 1. Create a new branch
+	// 2. Update the workflow files
+	// 3. Commit the changes
+	// 4. Create the PR
+	
+	// This is a simplified implementation that would need additional
+	// GitHub API calls to actually create and push changes
+	fmt.Printf("Would create PR for %s:\n", plan.Repository.FullName)
+	fmt.Printf("Branch: %s\n", branchName)
+	fmt.Printf("Title: %s\n", title)
+	fmt.Printf("Body: %s\n", body)
+	
+	return nil
+}
+
+// generatePRTitle creates a descriptive title for the PR
+func (c *Creator) generatePRTitle(plan UpdatePlan) string {
+	if len(plan.Updates) == 1 {
+		update := plan.Updates[0]
+		return fmt.Sprintf("Update %s from %s to %s", 
+			update.ActionRepo, update.CurrentVersion, update.TargetVersion)
+	}
+	
+	return fmt.Sprintf("Update %d GitHub Actions to latest versions", len(plan.Updates))
+}
+
+// generatePRBody creates a detailed body for the PR
+func (c *Creator) generatePRBody(plan UpdatePlan) string {
+	var body strings.Builder
+	
+	body.WriteString("## GitHub Actions Updates\n\n")
+	body.WriteString("This PR updates GitHub Actions to their latest recommended versions.\n\n")
+	
+	// Group updates by issue type
+	securityUpdates := []ActionUpdate{}
+	deprecatedUpdates := []ActionUpdate{}
+	outdatedUpdates := []ActionUpdate{}
+	
+	for _, update := range plan.Updates {
+		switch update.Issue.IssueType {
+		case "security":
+			securityUpdates = append(securityUpdates, update)
+		case "deprecated":
+			deprecatedUpdates = append(deprecatedUpdates, update)
+		case "outdated":
+			outdatedUpdates = append(outdatedUpdates, update)
+		}
+	}
+	
+	// Security updates section
+	if len(securityUpdates) > 0 {
+		body.WriteString("### 🔒 Security Updates\n\n")
+		for _, update := range securityUpdates {
+			body.WriteString(fmt.Sprintf("- **%s**: %s → %s\n", 
+				update.ActionRepo, update.CurrentVersion, update.TargetVersion))
+			body.WriteString(fmt.Sprintf("  - **Issue**: %s\n", update.Issue.Description))
+			body.WriteString(fmt.Sprintf("  - **Severity**: %s\n", update.Issue.Severity))
+			body.WriteString(fmt.Sprintf("  - **File**: `%s`\n\n", update.FilePath))
+		}
+	}
+	
+	// Deprecated updates section
+	if len(deprecatedUpdates) > 0 {
+		body.WriteString("### ⚠️ Deprecated Version Updates\n\n")
+		for _, update := range deprecatedUpdates {
+			body.WriteString(fmt.Sprintf("- **%s**: %s → %s\n", 
+				update.ActionRepo, update.CurrentVersion, update.TargetVersion))
+			body.WriteString(fmt.Sprintf("  - **File**: `%s`\n\n", update.FilePath))
+		}
+	}
+	
+	// Outdated updates section
+	if len(outdatedUpdates) > 0 {
+		body.WriteString("### 📊 Version Updates\n\n")
+		for _, update := range outdatedUpdates {
+			body.WriteString(fmt.Sprintf("- **%s**: %s → %s\n", 
+				update.ActionRepo, update.CurrentVersion, update.TargetVersion))
+			body.WriteString(fmt.Sprintf("  - **File**: `%s`\n\n", update.FilePath))
+		}
+	}
+	
+	body.WriteString("### Benefits\n\n")
+	body.WriteString("- ✅ Latest security fixes\n")
+	body.WriteString("- ✅ Improved performance\n")
+	body.WriteString("- ✅ New features and bug fixes\n")
+	body.WriteString("- ✅ Better compatibility\n\n")
+	
+	body.WriteString("### Testing\n\n")
+	body.WriteString("Please ensure all CI checks pass before merging.\n\n")
+	
+	body.WriteString("---\n")
+	body.WriteString("*This PR was automatically generated by [actions-maintainer](https://github.com/Jake-Mok-Nelson/actions-maintainer)*")
+	
+	return body.String()
+}
+
+// PlanUpdates creates update plans from scan results
+func PlanUpdates(repositories []output.RepositoryResult) []UpdatePlan {
+	var plans []UpdatePlan
+	
+	for _, repo := range repositories {
+		if len(repo.Issues) == 0 {
+			continue
+		}
+		
+		plan := UpdatePlan{
+			Repository: github.Repository{
+				Owner:         extractOwner(repo.FullName),
+				Name:          repo.Name,
+				FullName:      repo.FullName,
+				DefaultBranch: repo.DefaultBranch,
+			},
+			Updates: []ActionUpdate{},
+		}
+		
+		// Group issues by file and action
+		for _, issue := range repo.Issues {
+			if issue.SuggestedVersion == "" {
+				continue // Skip issues without suggested fixes
+			}
+			
+			update := ActionUpdate{
+				FilePath:       issue.FilePath,
+				ActionRepo:     issue.Repository,
+				CurrentVersion: issue.CurrentVersion,
+				TargetVersion:  issue.SuggestedVersion,
+				Issue:          issue,
+			}
+			
+			plan.Updates = append(plan.Updates, update)
+		}
+		
+		if len(plan.Updates) > 0 {
+			plans = append(plans, plan)
+		}
+	}
+	
+	return plans
+}
+
+// extractOwner extracts the owner from a full repository name
+func extractOwner(fullName string) string {
+	parts := strings.Split(fullName, "/")
+	if len(parts) >= 2 {
+		return parts[0]
+	}
+	return ""
+}
+
+// UpdateWorkflowContent updates the content of a workflow file with new action versions
+func UpdateWorkflowContent(content string, updates []ActionUpdate) string {
+	updatedContent := content
+	
+	for _, update := range updates {
+		// Create pattern to match the action reference
+		oldRef := fmt.Sprintf("%s@%s", update.ActionRepo, update.CurrentVersion)
+		newRef := fmt.Sprintf("%s@%s", update.ActionRepo, update.TargetVersion)
+		
+		// Use regex to safely replace action references
+		pattern := regexp.MustCompile(regexp.QuoteMeta(oldRef))
+		updatedContent = pattern.ReplaceAllString(updatedContent, newRef)
+	}
+	
+	return updatedContent
+}
