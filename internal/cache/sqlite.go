@@ -9,27 +9,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Cache provides TTL-based caching using SQLite
-type Cache struct {
+// SQLiteCache provides TTL-based caching using SQLite
+type SQLiteCache struct {
 	db *sql.DB
 }
 
-// CachedResult represents a cached scan result
-type CachedResult struct {
-	Owner     string    `json:"owner"`
-	ScanTime  time.Time `json:"scan_time"`
-	Results   []byte    `json:"results"` // JSON-encoded scan results
-	ExpiresAt time.Time `json:"expires_at"`
-}
-
-// NewCache creates a new SQLite cache
-func NewCache(dbPath string) (*Cache, error) {
+// NewSQLiteCache creates a new SQLite cache
+func NewSQLiteCache(dbPath string) (Cache, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open cache database: %w", err)
 	}
 
-	cache := &Cache{db: db}
+	cache := &SQLiteCache{db: db}
 
 	if err := cache.initializeSchema(); err != nil {
 		return nil, fmt.Errorf("failed to initialize cache schema: %w", err)
@@ -39,7 +31,7 @@ func NewCache(dbPath string) (*Cache, error) {
 }
 
 // initializeSchema creates the cache table if it doesn't exist
-func (c *Cache) initializeSchema() error {
+func (c *SQLiteCache) initializeSchema() error {
 	query := `
 	CREATE TABLE IF NOT EXISTS cache_results (
 		owner TEXT PRIMARY KEY,
@@ -56,7 +48,7 @@ func (c *Cache) initializeSchema() error {
 }
 
 // Get retrieves a cached result if it exists and hasn't expired
-func (c *Cache) Get(owner string) (*CachedResult, error) {
+func (c *SQLiteCache) Get(owner string) (*CachedResult, error) {
 	now := time.Now()
 
 	query := `
@@ -82,7 +74,7 @@ func (c *Cache) Get(owner string) (*CachedResult, error) {
 }
 
 // Set stores a result in the cache with TTL
-func (c *Cache) Set(owner string, results interface{}, ttl time.Duration) error {
+func (c *SQLiteCache) Set(owner string, results interface{}, ttl time.Duration) error {
 	resultsJSON, err := json.Marshal(results)
 	if err != nil {
 		return fmt.Errorf("failed to marshal results: %w", err)
@@ -105,7 +97,7 @@ func (c *Cache) Set(owner string, results interface{}, ttl time.Duration) error 
 }
 
 // CleanExpired removes expired entries from the cache
-func (c *Cache) CleanExpired() error {
+func (c *SQLiteCache) CleanExpired() error {
 	now := time.Now()
 
 	query := `DELETE FROM cache_results WHERE expires_at <= ?`
@@ -124,12 +116,12 @@ func (c *Cache) CleanExpired() error {
 }
 
 // Close closes the database connection
-func (c *Cache) Close() error {
+func (c *SQLiteCache) Close() error {
 	return c.db.Close()
 }
 
 // GetStats returns cache statistics
-func (c *Cache) GetStats() (map[string]interface{}, error) {
+func (c *SQLiteCache) GetStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	// Total entries

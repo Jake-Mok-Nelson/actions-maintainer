@@ -56,6 +56,13 @@ func main() {
 				Help:     `GitHub personal access token (or set GITHUB_TOKEN env var)`,
 				Variable: true,
 			},
+			{
+				Name:     "sqlite-cache",
+				Short:    "s",
+				Usage:    `--sqlite-cache`,
+				Help:     `Use SQLite cache instead of default in-memory cache`,
+				Variable: false,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -90,24 +97,34 @@ func handleScan(ctx climax.Context) int {
 	githubClient := github.NewClient(token)
 	actionManager := actions.NewManager()
 
-	// Initialize cache
-	cacheDir := filepath.Join(os.TempDir(), "actions-maintainer")
-	os.MkdirAll(cacheDir, 0755)
-	cachePath := filepath.Join(cacheDir, "cache.db")
+	// Initialize cache (defaults to in-memory, can use SQLite with --sqlite-cache flag)
+	var cacheInstance cache.Cache
+	useSQLite := ctx.Is("sqlite-cache")
 
-	cache, err := cache.NewCache(cachePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing cache: %v\n", err)
-		return 1
+	if useSQLite {
+		cacheDir := filepath.Join(os.TempDir(), "actions-maintainer")
+		os.MkdirAll(cacheDir, 0755)
+		cachePath := filepath.Join(cacheDir, "cache.db")
+
+		sqliteCache, err := cache.NewSQLiteCache(cachePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing SQLite cache: %v\n", err)
+			return 1
+		}
+		cacheInstance = sqliteCache
+		fmt.Printf("Using SQLite cache at: %s\n", cachePath)
+	} else {
+		cacheInstance = cache.NewMemoryCache()
+		fmt.Printf("Using in-memory cache\n")
 	}
-	defer cache.Close()
+	defer cacheInstance.Close()
 
 	// Clean expired cache entries
-	cache.CleanExpired()
+	cacheInstance.CleanExpired()
 
 	// Check cache first
 	fmt.Printf("Checking cache for recent results...\n")
-	cachedResult, err := cache.Get(owner)
+	cachedResult, err := cacheInstance.Get(owner)
 	if err != nil {
 		fmt.Printf("Cache check failed: %v\n", err)
 	}
@@ -192,7 +209,7 @@ func handleScan(ctx climax.Context) int {
 	scanResult = output.BuildScanResult(owner, repositoryResults)
 
 	// Cache the results (TTL: 1 hour)
-	if err := cache.Set(owner, scanResult, time.Hour); err != nil {
+	if err := cacheInstance.Set(owner, scanResult, time.Hour); err != nil {
 		fmt.Printf("Warning: Failed to cache results: %v\n", err)
 	}
 
