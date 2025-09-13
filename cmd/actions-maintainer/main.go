@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/tucnak/climax"
@@ -57,11 +56,11 @@ func main() {
 				Variable: true,
 			},
 			{
-				Name:     "sqlite-cache",
-				Short:    "s",
-				Usage:    `--sqlite-cache`,
-				Help:     `Use SQLite cache instead of default in-memory cache`,
-				Variable: false,
+				Name:     "cache",
+				Short:    "c",
+				Usage:    `--cache <provider>`,
+				Help:     `Cache provider to use (default: memory)`,
+				Variable: true,
 			},
 		},
 		Handle: handleScan,
@@ -97,26 +96,19 @@ func handleScan(ctx climax.Context) int {
 	githubClient := github.NewClient(token)
 	actionManager := actions.NewManager()
 
-	// Initialize cache (defaults to in-memory, can use SQLite with --sqlite-cache flag)
-	var cacheInstance cache.Cache
-	useSQLite := ctx.Is("sqlite-cache")
-
-	if useSQLite {
-		cacheDir := filepath.Join(os.TempDir(), "actions-maintainer")
-		os.MkdirAll(cacheDir, 0755)
-		cachePath := filepath.Join(cacheDir, "cache.db")
-
-		sqliteCache, err := cache.NewSQLiteCache(cachePath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing SQLite cache: %v\n", err)
-			return 1
-		}
-		cacheInstance = sqliteCache
-		fmt.Printf("Using SQLite cache at: %s\n", cachePath)
-	} else {
-		cacheInstance = cache.NewMemoryCache()
-		fmt.Printf("Using in-memory cache\n")
+	// Initialize cache (only memory cache is supported)
+	cacheProvider, _ := ctx.Get("cache")
+	if cacheProvider == "" {
+		cacheProvider = "memory"
 	}
+
+	if cacheProvider != "memory" {
+		fmt.Fprintf(os.Stderr, "Error: Unsupported cache provider '%s'. Only 'memory' is supported.\n", cacheProvider)
+		return 1
+	}
+
+	cacheInstance := cache.NewCache()
+	fmt.Printf("Using in-memory cache\n")
 	defer cacheInstance.Close()
 
 	// Clean expired cache entries
