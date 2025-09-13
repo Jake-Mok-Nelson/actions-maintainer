@@ -96,7 +96,7 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 				issues = append(issues, output.ActionIssue{
 					Repository:       action.Repository,
 					CurrentVersion:   action.Version,
-					SuggestedVersion: rule.LatestVersion,
+					SuggestedVersion: "", // Security issues don't determine upgrade requirements
 					IssueType:        "security",
 					Severity:         securityIssue.Severity,
 					Description:      fmt.Sprintf("Security issue: %s", securityIssue.Description),
