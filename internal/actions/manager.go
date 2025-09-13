@@ -232,39 +232,46 @@ func getDefaultRules() []Rule {
 			LatestVersion:      "v4",
 			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
+			SecurityIssues:     []SecurityIssue{},
 		},
 		{
 			Repository:         "actions/setup-python",
 			LatestVersion:      "v5",
 			MinimumVersion:     "v4",
 			DeprecatedVersions: []string{"v1", "v2"},
+			SecurityIssues:     []SecurityIssue{},
 		},
 		{
 			Repository:         "actions/upload-artifact",
 			LatestVersion:      "v4",
 			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
+			SecurityIssues:     []SecurityIssue{},
 		},
 		{
 			Repository:         "actions/download-artifact",
 			LatestVersion:      "v4",
 			MinimumVersion:     "v3",
 			DeprecatedVersions: []string{"v1"},
+			SecurityIssues:     []SecurityIssue{},
 		},
 		{
 			Repository:     "actions/cache",
 			LatestVersion:  "v4",
 			MinimumVersion: "v3",
+			SecurityIssues: []SecurityIssue{},
 		},
 		{
 			Repository:     "actions/setup-go",
 			LatestVersion:  "v5",
 			MinimumVersion: "v4",
+			SecurityIssues: []SecurityIssue{},
 		},
 		{
 			Repository:     "actions/setup-java",
 			LatestVersion:  "v4",
 			MinimumVersion: "v3",
+			SecurityIssues: []SecurityIssue{},
 		},
 	}
 }
