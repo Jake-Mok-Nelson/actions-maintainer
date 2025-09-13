@@ -131,7 +131,7 @@ func (c *Creator) generatePRBody(plan UpdatePlan) string {
 		}
 	}
 
-	body.WriteString("### Benefits\n\n")
+	body.WriteString("### Benefits of staying up to date\n\n")
 	body.WriteString("- ✅ Improved performance\n")
 	body.WriteString("- ✅ New features and bug fixes\n")
 	body.WriteString("- ✅ Better compatibility\n\n")
