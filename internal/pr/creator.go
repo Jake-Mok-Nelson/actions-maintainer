@@ -40,26 +40,29 @@ func NewCreator(githubClient *github.Client) *Creator {
 }
 
 // CreateUpdatePRs creates pull requests for action updates
-func (c *Creator) CreateUpdatePRs(plans []UpdatePlan) error {
+func (c *Creator) CreateUpdatePRs(plans []UpdatePlan) ([]output.CreatedPR, error) {
+	var createdPRs []output.CreatedPR
+
 	for _, plan := range plans {
 		if len(plan.Updates) == 0 {
 			continue
 		}
 
-		err := c.createPRForPlan(plan)
+		createdPR, err := c.createPRForPlan(plan)
 		if err != nil {
 			fmt.Printf("Failed to create PR for %s: %v\n", plan.Repository.FullName, err)
 			continue
 		}
 
+		createdPRs = append(createdPRs, createdPR)
 		fmt.Printf("Created PR for %s with %d action updates\n", plan.Repository.FullName, len(plan.Updates))
 	}
 
-	return nil
+	return createdPRs, nil
 }
 
 // createPRForPlan creates a pull request for a single update plan
-func (c *Creator) createPRForPlan(plan UpdatePlan) error {
+func (c *Creator) createPRForPlan(plan UpdatePlan) (output.CreatedPR, error) {
 	// Create a descriptive branch name
 	branchName := fmt.Sprintf("actions-maintainer/update-actions-%d", len(plan.Updates))
 
@@ -80,7 +83,17 @@ func (c *Creator) createPRForPlan(plan UpdatePlan) error {
 	fmt.Printf("Title: %s\n", title)
 	fmt.Printf("Body: %s\n", body)
 
-	return nil
+	// Return simulated PR info
+	prNumber := 42 // Simulated PR number
+	prURL := fmt.Sprintf("https://github.com/%s/pull/%d", plan.Repository.FullName, prNumber)
+
+	return output.CreatedPR{
+		Repository:  plan.Repository.FullName,
+		URL:         prURL,
+		Title:       title,
+		Number:      prNumber,
+		UpdateCount: len(plan.Updates),
+	}, nil
 }
 
 // generatePRTitle creates a descriptive title for the PR

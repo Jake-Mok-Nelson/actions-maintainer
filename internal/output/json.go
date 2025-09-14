@@ -13,8 +13,11 @@ import (
 type ScanResult struct {
 	Owner        string             `json:"owner"`
 	ScanTime     time.Time          `json:"scan_time"`
+	ScanEndTime  time.Time          `json:"scan_end_time"`
+	Duration     time.Duration      `json:"duration"`
 	Repositories []RepositoryResult `json:"repositories"`
 	Summary      Summary            `json:"summary"`
+	CreatedPRs   []CreatedPR        `json:"created_prs,omitempty"`
 }
 
 // RepositoryResult represents the scan result for a single repository
@@ -67,6 +70,15 @@ type ActionUsageStat struct {
 	Repositories []string       `json:"repositories"`
 }
 
+// CreatedPR represents a pull request that was created during the scan
+type CreatedPR struct {
+	Repository  string `json:"repository"`
+	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Number      int    `json:"number"`
+	UpdateCount int    `json:"update_count"`
+}
+
 // FormatJSON outputs the scan results as JSON
 func FormatJSON(result *ScanResult, writer io.Writer, pretty bool) error {
 	var data []byte
@@ -100,9 +112,23 @@ func BuildScanResult(owner string, repositories []RepositoryResult) *ScanResult 
 	return &ScanResult{
 		Owner:        owner,
 		ScanTime:     scanTime,
+		ScanEndTime:  time.Time{}, // Will be set when scan completes
+		Duration:     0,           // Will be calculated when scan completes
 		Repositories: repositories,
 		Summary:      summary,
+		CreatedPRs:   []CreatedPR{}, // Will be populated if PRs are created
 	}
+}
+
+// FinalizeScanResult updates the scan result with completion timing
+func FinalizeScanResult(result *ScanResult) {
+	result.ScanEndTime = time.Now()
+	result.Duration = result.ScanEndTime.Sub(result.ScanTime)
+}
+
+// AddCreatedPR adds a created PR to the scan result
+func AddCreatedPR(result *ScanResult, pr CreatedPR) {
+	result.CreatedPRs = append(result.CreatedPRs, pr)
 }
 
 // calculateSummary generates summary statistics from repository results
