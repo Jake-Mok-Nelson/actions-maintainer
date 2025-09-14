@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
@@ -9,11 +10,17 @@ import (
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
+// Config holds configuration options for the actions manager
+type Config struct {
+	Verbose bool
+}
+
 // Manager handles action version management and issue detection
 type Manager struct {
 	rules    []Rule
 	patcher  *patcher.WorkflowPatcher
 	resolver VersionResolver // Interface for version resolution
+	verbose  bool
 }
 
 // VersionResolver interface for resolving version aliases
@@ -37,6 +44,7 @@ func NewManager() *Manager {
 	return &Manager{
 		rules:   getDefaultRules(),
 		patcher: patcher.NewWorkflowPatcher(),
+		verbose: false,
 	}
 }
 
@@ -46,16 +54,68 @@ func NewManagerWithResolver(resolver VersionResolver) *Manager {
 		rules:    getDefaultRules(),
 		patcher:  patcher.NewWorkflowPatcher(),
 		resolver: resolver,
+		verbose:  false,
+	}
+}
+
+// NewManagerWithConfig creates a new actions manager with configuration
+func NewManagerWithConfig(config *Config) *Manager {
+	if config == nil {
+		config = &Config{Verbose: false}
+	}
+
+	if config.Verbose {
+		log.Printf("Actions manager initialized with verbose logging enabled")
+	}
+
+	return &Manager{
+		rules:   getDefaultRules(),
+		patcher: patcher.NewWorkflowPatcher(),
+		verbose: config.Verbose,
+	}
+}
+
+// NewManagerWithResolverAndConfig creates a new actions manager with a version resolver and configuration
+func NewManagerWithResolverAndConfig(resolver VersionResolver, config *Config) *Manager {
+	if config == nil {
+		config = &Config{Verbose: false}
+	}
+
+	if config.Verbose {
+		log.Printf("Actions manager initialized with version resolver and verbose logging enabled")
+	}
+
+	return &Manager{
+		rules:    getDefaultRules(),
+		patcher:  patcher.NewWorkflowPatcher(),
+		resolver: resolver,
+		verbose:  config.Verbose,
 	}
 }
 
 // AnalyzeActions analyzes action references and identifies issues
 func (m *Manager) AnalyzeActions(actions []workflow.ActionReference) []output.ActionIssue {
+	if m.verbose {
+		log.Printf("Rule evaluation: Starting analysis of %d action references", len(actions))
+	}
+
 	var issues []output.ActionIssue
 
-	for _, action := range actions {
+	for i, action := range actions {
+		if m.verbose {
+			log.Printf("Rule evaluation: Analyzing action %d/%d - %s@%s (context: %s)", i+1, len(actions), action.Repository, action.Version, action.Context)
+		}
+
 		actionIssues := m.analyzeAction(action)
 		issues = append(issues, actionIssues...)
+
+		if m.verbose {
+			log.Printf("Rule evaluation: Found %d issues for %s@%s", len(actionIssues), action.Repository, action.Version)
+		}
+	}
+
+	if m.verbose {
+		log.Printf("Rule evaluation: Completed analysis, found %d total issues", len(issues))
 	}
 
 	return issues
@@ -67,13 +127,28 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 
 	rule := m.findRule(action.Repository)
 	if rule == nil {
+		if m.verbose {
+			log.Printf("Rule evaluation: No rules found for repository %s, skipping analysis", action.Repository)
+		}
 		return issues // No rules for this action
+	}
+
+	if m.verbose {
+		log.Printf("Rule evaluation: Found rule for %s - latest: %s, minimum: %s, deprecated: %v", action.Repository, rule.LatestVersion, rule.MinimumVersion, rule.DeprecatedVersions)
 	}
 
 	// Check for outdated versions
 	if m.isOutdatedForRepository(action.Repository, action.Version, rule.LatestVersion) {
+		if m.verbose {
+			log.Printf("Rule evaluation: Version %s is outdated for %s (latest: %s)", action.Version, action.Repository, rule.LatestVersion)
+		}
+
 		// Suggest version in the same format as current version (like for like)
 		suggestedVersion := m.suggestLikeForLikeVersion(action.Repository, action.Version, rule.LatestVersion)
+
+		if m.verbose {
+			log.Printf("Rule evaluation: Suggested version for %s: %s -> %s", action.Repository, action.Version, suggestedVersion)
+		}
 
 		issue := output.ActionIssue{
 			Repository:       action.Repository,
@@ -86,10 +161,18 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			FilePath:         action.FilePath,
 		}
 
+		if m.verbose {
+			log.Printf("Rule evaluation: Created outdated issue for %s with severity %s", action.Repository, issue.Severity)
+		}
+
 		// Check if there are schema transformations for this version upgrade
 		if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.LatestVersion); hasPatches {
 			issue.HasTransformations = true
 			issue.SchemaChanges = []string{patchInfo.Description}
+
+			if m.verbose {
+				log.Printf("Rule evaluation: Found schema transformations for %s (%s -> %s)", action.Repository, action.Version, rule.LatestVersion)
+			}
 
 			// Add details about specific field changes
 			for _, patch := range patchInfo.Patches {
@@ -104,6 +187,10 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 	// Check for deprecated versions
 	for _, deprecatedVersion := range rule.DeprecatedVersions {
 		if action.Version == deprecatedVersion {
+			if m.verbose {
+				log.Printf("Rule evaluation: Version %s is deprecated for %s", action.Version, action.Repository)
+			}
+
 			// Suggest version in the same format as current version (like for like)
 			suggestedVersion := m.suggestLikeForLikeVersion(action.Repository, action.Version, rule.LatestVersion)
 

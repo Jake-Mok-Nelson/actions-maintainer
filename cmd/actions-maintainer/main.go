@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -26,7 +27,7 @@ func main() {
 	scanCmd := climax.Command{
 		Name:  "scan",
 		Brief: "Scan GitHub repositories for action dependencies",
-		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs] [--filter <regex>]`,
+		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs] [--filter <regex>] [--verbose]`,
 		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and reports on action dependencies.`,
 		Flags: []climax.Flag{
 			{
@@ -78,6 +79,13 @@ func main() {
 				Help:     `Regular expression to filter repositories by name (e.g., "jakes-repos-.*")`,
 				Variable: true,
 			},
+			{
+				Name:     "verbose",
+				Short:    "v",
+				Usage:    `--verbose`,
+				Help:     `Enable verbose logging for debugging (shows API calls, parsing steps, rule evaluations, and cache operations)`,
+				Variable: false,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -107,15 +115,25 @@ func handleScan(ctx climax.Context) int {
 	createPRs := ctx.Is("create-prs")
 	skipResolution := ctx.Is("skip-resolution")
 	filterPattern, _ := ctx.Get("filter")
+	verbose := ctx.Is("verbose")
+
+	if verbose {
+		log.Printf("Verbose logging enabled")
+		log.Printf("Scanning repositories for owner: %s", owner)
+	}
 
 	fmt.Printf("Scanning repositories for owner: %s\n", owner)
 
 	// Initialize components
-	githubClient := github.NewClient(token)
+	githubClient := github.NewClientWithConfig(token, &github.Config{
+		Verbose: verbose,
+	})
 
 	// Create version resolver
 	versionResolver := workflow.NewVersionResolver(githubClient, skipResolution)
-	actionManager := actions.NewManagerWithResolver(versionResolver)
+	actionManager := actions.NewManagerWithResolverAndConfig(versionResolver, &actions.Config{
+		Verbose: verbose,
+	})
 
 	// Initialize cache (only memory cache is supported)
 	cacheProvider, _ := ctx.Get("cache")
@@ -128,7 +146,9 @@ func handleScan(ctx climax.Context) int {
 		return 1
 	}
 
-	cacheInstance := cache.NewMemoryCache()
+	cacheInstance := cache.NewMemoryCacheWithConfig(&cache.Config{
+		Verbose: verbose,
+	})
 	fmt.Printf("Using in-memory cache\n")
 	defer cacheInstance.Close()
 
@@ -205,7 +225,12 @@ func handleScan(ctx climax.Context) int {
 
 		// Parse each workflow file
 		for _, wf := range workflowFiles {
-			actions, err := workflow.ParseWorkflow(wf.Content, wf.Path, repo.FullName)
+			if verbose {
+				log.Printf("Parsing workflow file: %s", wf.Path)
+			}
+			actions, err := workflow.ParseWorkflowWithConfig(wf.Content, wf.Path, repo.FullName, &workflow.Config{
+				Verbose: verbose,
+			})
 			if err != nil {
 				fmt.Printf("  Warning: Failed to parse %s: %v\n", wf.Path, err)
 				continue
@@ -222,10 +247,18 @@ func handleScan(ctx climax.Context) int {
 		}
 
 		// Analyze actions for issues
+		if verbose {
+			log.Printf("Starting analysis of %d total actions for repository %s", len(repoActions), repo.FullName)
+		}
 		issues := actionManager.AnalyzeActions(repoActions)
 
 		if len(issues) > 0 {
 			fmt.Printf("  Found %d issues\n", len(issues))
+			if verbose {
+				for _, issue := range issues {
+					log.Printf("Issue found: %s@%s - %s (severity: %s)", issue.Repository, issue.CurrentVersion, issue.IssueType, issue.Severity)
+				}
+			}
 		}
 
 		repositoryResults = append(repositoryResults, output.RepositoryResult{
