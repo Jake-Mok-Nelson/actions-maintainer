@@ -14,9 +14,9 @@ func TestVersionResolver_ComprehensiveCaching(t *testing.T) {
 
 	// Add tag resolutions
 	client.AddRefResolution("actions", "checkout", "v4", sha1)
-	client.AddRefResolution("actions", "checkout", "v4.1.0", sha1)  // Same SHA as v4
-	client.AddRefResolution("actions", "checkout", "v4.2.0", sha2)  // Different SHA
-	client.AddRefResolution("actions", "checkout", "v3", sha3)      // Different SHA
+	client.AddRefResolution("actions", "checkout", "v4.1.0", sha1) // Same SHA as v4
+	client.AddRefResolution("actions", "checkout", "v4.2.0", sha2) // Different SHA
+	client.AddRefResolution("actions", "checkout", "v3", sha3)     // Different SHA
 
 	// Add repository tags
 	client.AddRepoTags("actions", "checkout", map[string]string{
@@ -69,9 +69,9 @@ func TestVersionResolver_ComprehensiveCaching(t *testing.T) {
 
 	// Verify aliases are correctly mapped
 	expectedAliases := map[string][]string{
-		sha1: {"v4", "v4.1.0"},  // v4 and v4.1.0 point to same SHA
-		sha2: {"v4.2.0"},        // v4.2.0 is alone
-		sha3: {"v3"},            // v3 is alone
+		sha1: {"v4", "v4.1.0"}, // v4 and v4.1.0 point to same SHA
+		sha2: {"v4.2.0"},       // v4.2.0 is alone
+		sha3: {"v3"},           // v3 is alone
 	}
 
 	for sha, expectedVersions := range expectedAliases {
@@ -83,7 +83,7 @@ func TestVersionResolver_ComprehensiveCaching(t *testing.T) {
 			for _, alias := range cachedAliases {
 				aliasMap[alias] = true
 			}
-			
+
 			for _, expectedVersion := range expectedVersions {
 				if !aliasMap[expectedVersion] {
 					t.Errorf("Expected version %s to be in aliases for SHA %s", expectedVersion, sha)
@@ -97,7 +97,7 @@ func TestVersionResolver_CacheFirstEquivalence(t *testing.T) {
 	client := NewMockGitHubClient()
 
 	sha := "abc123def456"
-	
+
 	// Set up mock data
 	client.AddRefResolution("actions", "checkout", "v4", sha)
 	client.AddRefResolution("actions", "checkout", "v4.1.0", sha)
@@ -132,7 +132,7 @@ func TestVersionResolver_CacheFirstOutdatedCheck(t *testing.T) {
 
 	sha1 := "abc123def456"
 	sha2 := "def456ghi789"
-	
+
 	// Set up mock data
 	client.AddRefResolution("actions", "checkout", "v4", sha1)
 	client.AddRefResolution("actions", "checkout", "v3", sha2)
@@ -205,7 +205,7 @@ func TestVersionResolver_CacheExpiration(t *testing.T) {
 	})
 
 	resolver := NewVersionResolver(client, false)
-	
+
 	// Populate cache normally
 	resolver.ensureComprehensiveCache("actions", "checkout")
 
