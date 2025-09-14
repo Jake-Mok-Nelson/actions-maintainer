@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/tucnak/climax"
@@ -39,7 +40,7 @@ func main() {
 				Name:     "output",
 				Short:    "f",
 				Usage:    `--output <file>`,
-				Help:     `Output file for JSON results (default: stdout)`,
+				Help:     `Output file for results. Use .json extension for JSON format or .ipynb for Jupyter notebook (default: JSON to stdout)`,
 				Variable: true,
 			},
 			{
@@ -240,11 +241,6 @@ func handleScan(ctx climax.Context) int {
 	// Build final scan result
 	scanResult = output.BuildScanResult(owner, repositoryResults)
 
-	// Cache the results (TTL: 1 hour)
-	if err := cacheInstance.Set(owner, scanResult, time.Hour); err != nil {
-		fmt.Printf("Warning: Failed to cache results: %v\n", err)
-	}
-
 	// Output results
 	var outputWriter *os.File
 	if outputFile != "" {
@@ -259,9 +255,19 @@ func handleScan(ctx climax.Context) int {
 		outputWriter = os.Stdout
 	}
 
-	if err := output.FormatJSON(scanResult, outputWriter, true); err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
-		return 1
+	// Determine output format based on file extension
+	isNotebook := strings.HasSuffix(strings.ToLower(outputFile), ".ipynb")
+
+	if isNotebook {
+		if err := output.FormatNotebook(scanResult, outputWriter); err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting notebook output: %v\n", err)
+			return 1
+		}
+	} else {
+		if err := output.FormatJSON(scanResult, outputWriter, true); err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting JSON output: %v\n", err)
+			return 1
+		}
 	}
 
 	// Create PRs if requested
@@ -274,10 +280,24 @@ func handleScan(ctx climax.Context) int {
 			fmt.Printf("No updates needed - all actions are up to date!\n")
 		} else {
 			fmt.Printf("Planning updates for %d repositories\n", len(updatePlans))
-			if err := prCreator.CreateUpdatePRs(updatePlans); err != nil {
+			createdPRs, err := prCreator.CreateUpdatePRs(updatePlans)
+			if err != nil {
 				fmt.Printf("Warning: Some PRs failed to create: %v\n", err)
 			}
+
+			// Add created PRs to scan result
+			for _, createdPR := range createdPRs {
+				output.AddCreatedPR(scanResult, createdPR)
+			}
 		}
+	}
+
+	// Finalize scan result with timing
+	output.FinalizeScanResult(scanResult)
+
+	// Cache the results (TTL: 1 hour)
+	if err := cacheInstance.Set(owner, scanResult, time.Hour); err != nil {
+		fmt.Printf("Warning: Failed to cache results: %v\n", err)
 	}
 
 	// Print summary
