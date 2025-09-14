@@ -3,19 +3,22 @@ package actions
 import (
 	"testing"
 
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
 // MockVersionResolver implements VersionResolver for testing
 type MockVersionResolver struct {
-	equivalentVersions map[string]bool // maps "repo:v1:v2" to bool
-	outdatedVersions   map[string]bool // maps "repo:current:latest" to bool
+	equivalentVersions map[string]bool   // maps "repo:v1:v2" to bool
+	outdatedVersions   map[string]bool   // maps "repo:current:latest" to bool
+	refResolutions     map[string]string // maps "owner/repo:ref" to SHA
 }
 
 func NewMockVersionResolver() *MockVersionResolver {
 	return &MockVersionResolver{
 		equivalentVersions: make(map[string]bool),
 		outdatedVersions:   make(map[string]bool),
+		refResolutions:     make(map[string]string),
 	}
 }
 
@@ -46,6 +49,21 @@ func (m *MockVersionResolver) IsVersionOutdated(repository, currentVersion, late
 
 	// Default to checking if versions are different
 	return currentVersion != latestVersion, nil
+}
+
+func (m *MockVersionResolver) ResolveRefWithCache(owner, repo, ref string) (string, error) {
+	key := owner + "/" + repo + ":" + ref
+	if sha, exists := m.refResolutions[key]; exists {
+		return sha, nil
+	}
+	// Return a mock SHA if not found
+	return "abc123def456ghi789jkl012mno345pqr678stu901", nil
+}
+
+// SetRefResolution sets a mock resolution for a ref to SHA
+func (m *MockVersionResolver) SetRefResolution(owner, repo, ref, sha string) {
+	key := owner + "/" + repo + ":" + ref
+	m.refResolutions[key] = sha
 }
 
 func (m *MockVersionResolver) SetVersionsEquivalent(repository, version1, version2 string, equivalent bool) {
@@ -263,5 +281,173 @@ func TestManager_AnalyzeActions_MultipleAliases(t *testing.T) {
 		if issue.IssueType == "outdated" {
 			t.Errorf("Expected no outdated issues for equivalent versions, but found: %+v", issue)
 		}
+	}
+}
+
+// TestDetectVersionFormat tests the version format detection
+func TestDetectVersionFormat(t *testing.T) {
+	manager := NewManager()
+
+	tests := []struct {
+		version  string
+		expected VersionFormat
+	}{
+		{"v4", VersionFormatTag},
+		{"v4.1.0", VersionFormatTag},
+		{"abc123def456", VersionFormatSHA},
+		{"abc123def456abc789def012abc345def678abc90", VersionFormatSHA}, // 40 char SHA
+		{"main", VersionFormatBranch},
+		{"master", VersionFormatBranch},
+		{"feature-branch", VersionFormatTag}, // non-standard branch names default to tag
+		{"1.2.3", VersionFormatTag},          // non-v prefixed versions default to tag
+	}
+
+	for _, test := range tests {
+		t.Run(test.version, func(t *testing.T) {
+			actual := manager.detectVersionFormat(test.version)
+			if actual != test.expected {
+				t.Errorf("Expected format %v for version %s, got %v", test.expected, test.version, actual)
+			}
+		})
+	}
+}
+
+// TestSuggestLikeForLikeVersion_WithResolver tests like-for-like suggestions with a resolver
+func TestSuggestLikeForLikeVersion_WithResolver(t *testing.T) {
+	resolver := NewMockVersionResolver()
+	manager := NewManagerWithResolver(resolver)
+
+	// Set up mock resolution for v4 tag to a specific SHA
+	expectedSHA := "def456ghi789jkl012mno345pqr678stu901abc123"
+	resolver.SetRefResolution("actions", "checkout", "v4", expectedSHA)
+
+	tests := []struct {
+		name               string
+		currentVersion     string
+		latestTag          string
+		expectedSuggestion string
+	}{
+		{
+			name:               "Tag to tag",
+			currentVersion:     "v3",
+			latestTag:          "v4",
+			expectedSuggestion: "v4",
+		},
+		{
+			name:               "SHA to SHA",
+			currentVersion:     "abc123def456",
+			latestTag:          "v4",
+			expectedSuggestion: expectedSHA,
+		},
+		{
+			name:               "Branch to tag",
+			currentVersion:     "main",
+			latestTag:          "v4",
+			expectedSuggestion: "v4",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual := manager.suggestLikeForLikeVersion("actions/checkout", test.currentVersion, test.latestTag)
+			if actual != test.expectedSuggestion {
+				t.Errorf("Expected suggestion %s, got %s", test.expectedSuggestion, actual)
+			}
+		})
+	}
+}
+
+// TestSuggestLikeForLikeVersion_WithoutResolver tests like-for-like suggestions without a resolver
+func TestSuggestLikeForLikeVersion_WithoutResolver(t *testing.T) {
+	manager := NewManager() // No resolver
+
+	tests := []struct {
+		name               string
+		currentVersion     string
+		latestTag          string
+		expectedSuggestion string
+	}{
+		{
+			name:               "Tag to tag",
+			currentVersion:     "v3",
+			latestTag:          "v4",
+			expectedSuggestion: "v4",
+		},
+		{
+			name:               "SHA fallback to tag",
+			currentVersion:     "abc123def456",
+			latestTag:          "v4",
+			expectedSuggestion: "v4", // Falls back to tag when no resolver
+		},
+		{
+			name:               "Branch to tag",
+			currentVersion:     "main",
+			latestTag:          "v4",
+			expectedSuggestion: "v4",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual := manager.suggestLikeForLikeVersion("actions/checkout", test.currentVersion, test.latestTag)
+			if actual != test.expectedSuggestion {
+				t.Errorf("Expected suggestion %s, got %s", test.expectedSuggestion, actual)
+			}
+		})
+	}
+}
+
+// TestAnalyzeActions_LikeForLikeSuggestions tests that the analyze method uses like-for-like suggestions
+func TestAnalyzeActions_LikeForLikeSuggestions(t *testing.T) {
+	resolver := NewMockVersionResolver()
+	manager := NewManagerWithResolver(resolver)
+
+	// Set up v3 as outdated compared to v4
+	resolver.SetVersionsEquivalent("actions/checkout", "v3", "v4", false)
+	resolver.SetVersionsEquivalent("actions/checkout", "abc123def456", "v4", false)
+
+	// Set up mock SHA resolution for v4
+	expectedSHA := "def456ghi789jkl012mno345pqr678stu901abc123"
+	resolver.SetRefResolution("actions", "checkout", "v4", expectedSHA)
+
+	actions := []workflow.ActionReference{
+		{
+			Repository: "actions/checkout",
+			Version:    "v3", // Tag version
+			Context:    "job:test/step:checkout-tag",
+			FilePath:   ".github/workflows/test.yml",
+		},
+		{
+			Repository: "actions/checkout",
+			Version:    "abc123def456", // SHA version
+			Context:    "job:test/step:checkout-sha",
+			FilePath:   ".github/workflows/test.yml",
+		},
+	}
+
+	issues := manager.AnalyzeActions(actions)
+
+	// Should find 2 outdated issues
+	var tagIssue, shaIssue *output.ActionIssue
+	for i := range issues {
+		if issues[i].CurrentVersion == "v3" {
+			tagIssue = &issues[i]
+		} else if issues[i].CurrentVersion == "abc123def456" {
+			shaIssue = &issues[i]
+		}
+	}
+
+	if tagIssue == nil {
+		t.Fatal("Expected to find outdated issue for tag version v3")
+	}
+	if tagIssue.SuggestedVersion != "v4" {
+		t.Errorf("Expected tag suggestion v4, got %s", tagIssue.SuggestedVersion)
+	}
+
+	if shaIssue == nil {
+		t.Fatal("Expected to find outdated issue for SHA version")
+	}
+	if shaIssue.SuggestedVersion != expectedSHA {
+		t.Errorf("Expected SHA suggestion %s, got %s", expectedSHA, shaIssue.SuggestedVersion)
 	}
 }

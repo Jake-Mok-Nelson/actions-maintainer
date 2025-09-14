@@ -130,6 +130,11 @@ func (vr *VersionResolver) resolveAction(action ActionReference) (ResolvedAction
 	}, nil
 }
 
+// ResolveRefWithCache resolves a reference to a commit SHA with caching (public method)
+func (vr *VersionResolver) ResolveRefWithCache(owner, repo, ref string) (string, error) {
+	return vr.resolveRefWithCache(owner, repo, ref)
+}
+
 // resolveRefWithCache resolves a reference to a commit SHA with caching
 func (vr *VersionResolver) resolveRefWithCache(owner, repo, ref string) (string, error) {
 	cacheKey := fmt.Sprintf("%s/%s:%s", owner, repo, ref)
