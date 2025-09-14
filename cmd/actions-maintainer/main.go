@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/tucnak/climax"
@@ -24,7 +25,7 @@ func main() {
 	scanCmd := climax.Command{
 		Name:  "scan",
 		Brief: "Scan GitHub repositories for action dependencies",
-		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs]`,
+		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs] [--filter <regex>]`,
 		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and reports on action dependencies.`,
 		Flags: []climax.Flag{
 			{
@@ -69,6 +70,13 @@ func main() {
 				Help:     `Skip version alias resolution and use string matching only`,
 				Variable: false,
 			},
+			{
+				Name:     "filter",
+				Short:    "r",
+				Usage:    `--filter <regex>`,
+				Help:     `Regular expression to filter repositories by name (e.g., "jakes-repos-.*")`,
+				Variable: true,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -97,6 +105,7 @@ func handleScan(ctx climax.Context) int {
 	outputFile, _ := ctx.Get("output")
 	createPRs := ctx.Is("create-prs")
 	skipResolution := ctx.Is("skip-resolution")
+	filterPattern, _ := ctx.Get("filter")
 
 	fmt.Printf("Scanning repositories for owner: %s\n", owner)
 
@@ -149,6 +158,26 @@ func handleScan(ctx climax.Context) int {
 	}
 
 	fmt.Printf("Found %d repositories\n", len(repositories))
+
+	// Apply repository filter if provided
+	if filterPattern != "" {
+		fmt.Printf("Applying filter pattern: %s\n", filterPattern)
+		filterRegex, err := regexp.Compile(filterPattern)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Invalid filter regex pattern '%s': %v\n", filterPattern, err)
+			return 1
+		}
+
+		var filteredRepositories []github.Repository
+		for _, repo := range repositories {
+			if filterRegex.MatchString(repo.Name) {
+				filteredRepositories = append(filteredRepositories, repo)
+			}
+		}
+
+		fmt.Printf("Filtered repositories: %d/%d match pattern\n", len(filteredRepositories), len(repositories))
+		repositories = filteredRepositories
+	}
 
 	var repositoryResults []output.RepositoryResult
 

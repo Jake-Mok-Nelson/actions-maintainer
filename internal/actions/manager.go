@@ -173,7 +173,7 @@ func (m *Manager) isOutdatedForRepository(repository, current, latest string) bo
 		if outdated, err := m.resolver.IsVersionOutdated(repository, current, latest); err == nil {
 			return outdated
 		}
-		
+
 		// Fall back to equivalence check if IsVersionOutdated fails
 		equivalent, err := m.resolver.AreVersionsEquivalent(repository, current, latest)
 		if err == nil && equivalent {

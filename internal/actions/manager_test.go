@@ -33,17 +33,17 @@ func (m *MockVersionResolver) IsVersionOutdated(repository, currentVersion, late
 	if result, exists := m.outdatedVersions[key]; exists {
 		return result, nil
 	}
-	
+
 	// Don't flag branch references as outdated (same logic as real resolver)
 	if currentVersion == "main" || currentVersion == "master" {
 		return false, nil
 	}
-	
+
 	// Check if versions are equivalent first - if so, not outdated
 	if equivalent, err := m.AreVersionsEquivalent(repository, currentVersion, latestVersion); err == nil && equivalent {
 		return false, nil
 	}
-	
+
 	// Default to checking if versions are different
 	return currentVersion != latestVersion, nil
 }

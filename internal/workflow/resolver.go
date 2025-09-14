@@ -41,9 +41,9 @@ type cacheEntry struct {
 	sha       string
 	timestamp time.Time
 	tags      map[string]string // maps tag names to SHAs for a repository
-	
+
 	// Enhanced fields for comprehensive action version caching
-	allVersions map[string]string // complete version->SHA mapping for a repository
+	allVersions map[string]string   // complete version->SHA mapping for a repository
 	aliases     map[string][]string // SHA->[]version aliases mapping
 }
 
@@ -218,26 +218,26 @@ func (vr *VersionResolver) getTagsWithCache(owner, repo string) (map[string]stri
 // Returns version->SHA mappings and SHA->aliases mappings if available in cache
 func (vr *VersionResolver) GetCachedVersionInfo(owner, repo string) (map[string]string, map[string][]string, bool) {
 	cacheKey := fmt.Sprintf("%s/%s:comprehensive", owner, repo)
-	
+
 	vr.cacheMutex.RLock()
 	defer vr.cacheMutex.RUnlock()
-	
+
 	if entry, exists := vr.cache[cacheKey]; exists {
 		if time.Since(entry.timestamp) < vr.cacheTTL && entry.allVersions != nil {
 			return entry.allVersions, entry.aliases, true
 		}
 	}
-	
+
 	return nil, nil, false
 }
 
 // cacheComprehensiveVersionInfo stores complete version information for a repository
 func (vr *VersionResolver) cacheComprehensiveVersionInfo(owner, repo string, versions map[string]string, aliases map[string][]string) {
 	cacheKey := fmt.Sprintf("%s/%s:comprehensive", owner, repo)
-	
+
 	vr.cacheMutex.Lock()
 	defer vr.cacheMutex.Unlock()
-	
+
 	vr.cache[cacheKey] = &cacheEntry{
 		timestamp:   time.Now(),
 		allVersions: versions,
@@ -265,7 +265,7 @@ func (vr *VersionResolver) ensureComprehensiveCache(owner, repo string) {
 	// Copy all tag->SHA mappings
 	for tag, sha := range tags {
 		versions[tag] = sha
-		
+
 		// Build reverse mapping for aliases (SHA -> list of tags)
 		if aliases[sha] == nil {
 			aliases[sha] = []string{}
@@ -315,7 +315,7 @@ func (vr *VersionResolver) AreVersionsEquivalent(repository, version1, version2 
 	if hasCachedVersions {
 		sha1, version1Found := versions[version1]
 		sha2, version2Found := versions[version2]
-		
+
 		if version1Found && version2Found {
 			// Both versions found in cache, compare SHAs directly
 			return sha1 == sha2, nil
@@ -363,7 +363,7 @@ func (vr *VersionResolver) IsVersionOutdated(repository, currentVersion, latestV
 	if hasCachedVersions {
 		currentSHA, currentFound := versions[currentVersion]
 		latestSHA, latestFound := versions[latestVersion]
-		
+
 		if currentFound && latestFound {
 			// Both versions found in cache, compare SHAs directly
 			return currentSHA != latestSHA, nil
@@ -377,6 +377,6 @@ func (vr *VersionResolver) IsVersionOutdated(repository, currentVersion, latestV
 		// Fall back to string comparison on resolution failure
 		return currentVersion != latestVersion, nil
 	}
-	
+
 	return !equivalent, nil
 }
