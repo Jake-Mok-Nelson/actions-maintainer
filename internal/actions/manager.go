@@ -20,6 +20,7 @@ type Manager struct {
 type VersionResolver interface {
 	AreVersionsEquivalent(repository, version1, version2 string) (bool, error)
 	IsVersionOutdated(repository, currentVersion, latestVersion string) (bool, error)
+	ResolveRefWithCache(owner, repo, ref string) (string, error)
 }
 
 // Rule defines a version enforcement rule for actions
@@ -71,10 +72,13 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 
 	// Check for outdated versions
 	if m.isOutdatedForRepository(action.Repository, action.Version, rule.LatestVersion) {
+		// Suggest version in the same format as current version (like for like)
+		suggestedVersion := m.suggestLikeForLikeVersion(action.Repository, action.Version, rule.LatestVersion)
+
 		issue := output.ActionIssue{
 			Repository:       action.Repository,
 			CurrentVersion:   action.Version,
-			SuggestedVersion: rule.LatestVersion,
+			SuggestedVersion: suggestedVersion,
 			IssueType:        "outdated",
 			Severity:         m.determineSeverity(action.Version, rule),
 			Description:      fmt.Sprintf("Action %s is using version %s, latest is %s", action.Repository, action.Version, rule.LatestVersion),
@@ -100,10 +104,13 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 	// Check for deprecated versions
 	for _, deprecatedVersion := range rule.DeprecatedVersions {
 		if action.Version == deprecatedVersion {
+			// Suggest version in the same format as current version (like for like)
+			suggestedVersion := m.suggestLikeForLikeVersion(action.Repository, action.Version, rule.LatestVersion)
+
 			issue := output.ActionIssue{
 				Repository:       action.Repository,
 				CurrentVersion:   action.Version,
-				SuggestedVersion: rule.LatestVersion,
+				SuggestedVersion: suggestedVersion,
 				IssueType:        "deprecated",
 				Severity:         "high",
 				Description:      fmt.Sprintf("Action %s version %s is deprecated", action.Repository, action.Version),
@@ -263,6 +270,70 @@ func parseVersion(version string) int {
 		return 5
 	default:
 		return 0
+	}
+}
+
+// VersionFormat represents the format type of a version reference
+type VersionFormat int
+
+const (
+	VersionFormatTag VersionFormat = iota
+	VersionFormatSHA
+	VersionFormatBranch
+)
+
+// detectVersionFormat determines the format of a version string
+func (m *Manager) detectVersionFormat(version string) VersionFormat {
+	// Branch references
+	if version == "main" || version == "master" {
+		return VersionFormatBranch
+	}
+
+	// SHA format (7-40 hex characters, not starting with v)
+	if len(version) >= 7 && len(version) <= 41 && !strings.HasPrefix(version, "v") && isHexString(version) {
+		return VersionFormatSHA
+	}
+
+	// Tag format (starts with v and has dots or is just vN, or anything else)
+	return VersionFormatTag
+}
+
+// isHexString checks if a string contains only hexadecimal characters
+func isHexString(s string) bool {
+	for _, char := range s {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// suggestLikeForLikeVersion suggests a version in the same format as the current version
+func (m *Manager) suggestLikeForLikeVersion(repository, currentVersion, latestTagVersion string) string {
+	format := m.detectVersionFormat(currentVersion)
+
+	switch format {
+	case VersionFormatBranch:
+		// For branch references, suggest the latest tag as-is since branches are not outdated
+		return latestTagVersion
+	case VersionFormatTag:
+		// For tag references, suggest the latest tag as-is
+		return latestTagVersion
+	case VersionFormatSHA:
+		// For SHA references, resolve the latest tag to its SHA
+		if m.resolver != nil && repository != "" {
+			parts := strings.Split(repository, "/")
+			if len(parts) == 2 {
+				owner, repo := parts[0], parts[1]
+				if sha, err := m.resolver.ResolveRefWithCache(owner, repo, latestTagVersion); err == nil {
+					return sha
+				}
+			}
+		}
+		// Fallback to tag if resolution fails
+		return latestTagVersion
+	default:
+		return latestTagVersion
 	}
 }
 
