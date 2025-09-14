@@ -3,6 +3,8 @@ package workflow
 import (
 	"fmt"
 	"testing"
+
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/cache"
 )
 
 // MockGitHubClient implements GitHubClient for testing
@@ -46,7 +48,7 @@ func (m *MockGitHubClient) AddRepoTags(owner, repo string, tags map[string]strin
 
 func TestVersionResolver_SkipResolution(t *testing.T) {
 	client := NewMockGitHubClient()
-	resolver := NewVersionResolver(client, true) // skipResolve = true
+	resolver := NewVersionResolverWithCache(client, true, cache.NewMemoryCache()) // skipResolve = true
 
 	actions := []ActionReference{
 		{
@@ -91,7 +93,7 @@ func TestVersionResolver_BasicResolution(t *testing.T) {
 		"v4.2.0": "different_sha",
 	})
 
-	resolver := NewVersionResolver(client, false) // skipResolve = false
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache()) // skipResolve = false
 
 	actions := []ActionReference{
 		{
@@ -134,7 +136,7 @@ func TestVersionResolver_BasicResolution(t *testing.T) {
 
 func TestVersionResolver_AreVersionsEquivalent_SkipResolution(t *testing.T) {
 	client := NewMockGitHubClient()
-	resolver := NewVersionResolver(client, true) // skipResolve = true
+	resolver := NewVersionResolverWithCache(client, true, cache.NewMemoryCache()) // skipResolve = true
 
 	// Should fall back to string comparison
 	equivalent, err := resolver.AreVersionsEquivalent("actions/checkout", "v4", "v4")
@@ -163,7 +165,7 @@ func TestVersionResolver_AreVersionsEquivalent_WithResolution(t *testing.T) {
 	client.AddRefResolution("actions", "checkout", "v4.2.1", sha)
 	client.AddRefResolution("actions", "checkout", "v3", "different_sha")
 
-	resolver := NewVersionResolver(client, false) // skipResolve = false
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache()) // skipResolve = false
 
 	// Test equivalent versions (same SHA)
 	equivalent, err := resolver.AreVersionsEquivalent("actions/checkout", "v4", "v4.2.1")
@@ -186,7 +188,7 @@ func TestVersionResolver_AreVersionsEquivalent_WithResolution(t *testing.T) {
 
 func TestVersionResolver_ErrorHandling(t *testing.T) {
 	client := NewMockGitHubClient()
-	resolver := NewVersionResolver(client, false) // skipResolve = false
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache()) // skipResolve = false
 
 	actions := []ActionReference{
 		{
@@ -217,7 +219,7 @@ func TestVersionResolver_Caching(t *testing.T) {
 	sha := "abc123def456"
 	client.AddRefResolution("actions", "checkout", "v4", sha)
 
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	// First call should hit the API
 	sha1, err := resolver.resolveRefWithCache("actions", "checkout", "v4")
@@ -242,7 +244,7 @@ func TestVersionResolver_Caching(t *testing.T) {
 
 func TestVersionResolver_InvalidRepository(t *testing.T) {
 	client := NewMockGitHubClient()
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	actions := []ActionReference{
 		{

@@ -6,7 +6,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/tucnak/climax"
 
@@ -124,18 +123,7 @@ func handleScan(ctx climax.Context) int {
 
 	fmt.Printf("Scanning repositories for owner: %s\n", owner)
 
-	// Initialize components
-	githubClient := github.NewClientWithConfig(token, &github.Config{
-		Verbose: verbose,
-	})
-
-	// Create version resolver
-	versionResolver := workflow.NewVersionResolver(githubClient, skipResolution)
-	actionManager := actions.NewManagerWithResolverAndConfig(versionResolver, &actions.Config{
-		Verbose: verbose,
-	})
-
-	// Initialize cache (only memory cache is supported)
+	// Initialize cache for version resolution (only memory cache is supported)
 	cacheProvider, _ := ctx.Get("cache")
 	if cacheProvider == "" {
 		cacheProvider = "memory"
@@ -149,28 +137,24 @@ func handleScan(ctx climax.Context) int {
 	cacheInstance := cache.NewMemoryCacheWithConfig(&cache.Config{
 		Verbose: verbose,
 	})
-	fmt.Printf("Using in-memory cache\n")
+	fmt.Printf("Using in-memory cache for version resolution\n")
 	defer cacheInstance.Close()
 
 	// Clean expired cache entries
 	cacheInstance.CleanExpired()
 
-	// Check cache first
-	fmt.Printf("Checking cache for recent results...\n")
-	cachedResult, err := cacheInstance.Get(owner)
-	if err != nil {
-		fmt.Printf("Cache check failed: %v\n", err)
-	}
+	// Initialize components
+	githubClient := github.NewClientWithConfig(token, &github.Config{
+		Verbose: verbose,
+	})
 
-	var scanResult *output.ScanResult
+	// Create version resolver with shared cache
+	versionResolver := workflow.NewVersionResolverWithCache(githubClient, skipResolution, cacheInstance)
+	actionManager := actions.NewManagerWithResolverAndConfig(versionResolver, &actions.Config{
+		Verbose: verbose,
+	})
 
-	if cachedResult != nil {
-		fmt.Printf("Found cached results from %s\n", cachedResult.ScanTime.Format(time.RFC3339))
-		// In a real implementation, you'd unmarshal the cached results
-		fmt.Printf("Using cached results (cache implementation simplified for this demo)\n")
-	}
-
-	// Perform fresh scan
+	// Perform scan
 	fmt.Printf("Fetching repositories...\n")
 	repositories, err := githubClient.ListRepositories(owner)
 	if err != nil {
@@ -272,7 +256,7 @@ func handleScan(ctx climax.Context) int {
 	}
 
 	// Build final scan result
-	scanResult = output.BuildScanResult(owner, repositoryResults)
+	scanResult := output.BuildScanResult(owner, repositoryResults)
 
 	// Output results
 	var outputWriter *os.File
@@ -328,11 +312,6 @@ func handleScan(ctx climax.Context) int {
 	// Finalize scan result with timing
 	output.FinalizeScanResult(scanResult)
 
-	// Cache the results (TTL: 1 hour)
-	if err := cacheInstance.Set(owner, scanResult, time.Hour); err != nil {
-		fmt.Printf("Warning: Failed to cache results: %v\n", err)
-	}
-
 	// Print summary
 	fmt.Printf("\nScan complete!\n")
 	fmt.Printf("- Repositories scanned: %d\n", scanResult.Summary.TotalRepositories)
@@ -348,6 +327,11 @@ func handleScan(ctx climax.Context) int {
 
 	if outputFile != "" {
 		fmt.Printf("- Results saved to: %s\n", outputFile)
+	}
+
+	// Print cache statistics
+	if stats, err := cacheInstance.GetStats(); err == nil {
+		fmt.Printf("- Cache entries: %v total, %v valid\n", stats["total_entries"], stats["valid_entries"])
 	}
 
 	return 0
