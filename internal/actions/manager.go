@@ -19,6 +19,7 @@ type Manager struct {
 // VersionResolver interface for resolving version aliases
 type VersionResolver interface {
 	AreVersionsEquivalent(repository, version1, version2 string) (bool, error)
+	IsVersionOutdated(repository, currentVersion, latestVersion string) (bool, error)
 }
 
 // Rule defines a version enforcement rule for actions
@@ -166,8 +167,14 @@ func (m *Manager) isOutdatedForRepository(repository, current, latest string) bo
 		return false
 	}
 
-	// Use version resolver if available and repository is provided
+	// Use cache-first version resolver if available and repository is provided
 	if m.resolver != nil && repository != "" {
+		// First try the new cache-first outdated check method
+		if outdated, err := m.resolver.IsVersionOutdated(repository, current, latest); err == nil {
+			return outdated
+		}
+		
+		// Fall back to equivalence check if IsVersionOutdated fails
 		equivalent, err := m.resolver.AreVersionsEquivalent(repository, current, latest)
 		if err == nil && equivalent {
 			return false // Versions are equivalent (same SHA)
