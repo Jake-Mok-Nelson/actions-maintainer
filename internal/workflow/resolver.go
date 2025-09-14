@@ -3,8 +3,9 @@ package workflow
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/cache"
 )
 
 // GitHubClient interface defines the methods needed from the GitHub client for version resolution
@@ -21,7 +22,7 @@ type GitHubClient interface {
 // intelligent version comparison by resolving all references to their commit SHAs.
 //
 // Key Design Principles:
-// 1. Performance: Uses caching to minimize GitHub API calls with 1-hour TTL
+// 1. Performance: Uses shared caching to minimize GitHub API calls with 1-hour TTL
 // 2. Resilience: Falls back to string comparison on API failures
 // 3. Flexibility: --skip-resolution flag allows purely string-based matching
 // 4. Accuracy: SHA-based comparison provides authoritative version equivalence
@@ -31,12 +32,11 @@ type GitHubClient interface {
 type VersionResolver struct {
 	client      GitHubClient
 	skipResolve bool
-	cache       map[string]*cacheEntry
-	cacheMutex  sync.RWMutex
+	cache       cache.Cache
 	cacheTTL    time.Duration
 }
 
-// cacheEntry represents a cached resolution result
+// cacheEntry represents a cached resolution result (deprecated - now using shared cache)
 type cacheEntry struct {
 	sha       string
 	timestamp time.Time
@@ -59,7 +59,17 @@ func NewVersionResolver(client GitHubClient, skipResolve bool) *VersionResolver 
 	return &VersionResolver{
 		client:      client,
 		skipResolve: skipResolve,
-		cache:       make(map[string]*cacheEntry),
+		cache:       nil,       // Will be set when called with a cache
+		cacheTTL:    time.Hour, // Cache for 1 hour
+	}
+}
+
+// NewVersionResolverWithCache creates a new version resolver with shared cache
+func NewVersionResolverWithCache(client GitHubClient, skipResolve bool, sharedCache cache.Cache) *VersionResolver {
+	return &VersionResolver{
+		client:      client,
+		skipResolve: skipResolve,
+		cache:       sharedCache,
 		cacheTTL:    time.Hour, // Cache for 1 hour
 	}
 }
@@ -137,16 +147,15 @@ func (vr *VersionResolver) ResolveRefWithCache(owner, repo, ref string) (string,
 
 // resolveRefWithCache resolves a reference to a commit SHA with caching
 func (vr *VersionResolver) resolveRefWithCache(owner, repo, ref string) (string, error) {
-	cacheKey := fmt.Sprintf("%s/%s:%s", owner, repo, ref)
-
-	vr.cacheMutex.RLock()
-	if entry, exists := vr.cache[cacheKey]; exists {
-		if time.Since(entry.timestamp) < vr.cacheTTL {
-			vr.cacheMutex.RUnlock()
-			return entry.sha, nil
+	// If we have a cache, try to use it
+	if vr.cache != nil {
+		if sha, found, err := vr.cache.GetRef(owner, repo, ref); err == nil && found {
+			return sha, nil
+		} else if err != nil {
+			// Log the error but continue with API resolution
+			fmt.Printf("Warning: Cache error when getting ref %s/%s:%s - %v\n", owner, repo, ref, err)
 		}
 	}
-	vr.cacheMutex.RUnlock()
 
 	// Resolve using GitHub API
 	sha, err := vr.client.ResolveRef(owner, repo, ref)
@@ -154,13 +163,13 @@ func (vr *VersionResolver) resolveRefWithCache(owner, repo, ref string) (string,
 		return "", err
 	}
 
-	// Cache the result
-	vr.cacheMutex.Lock()
-	vr.cache[cacheKey] = &cacheEntry{
-		sha:       sha,
-		timestamp: time.Now(),
+	// Cache the result if we have a cache
+	if vr.cache != nil {
+		if err := vr.cache.SetRef(owner, repo, ref, sha, vr.cacheTTL); err != nil {
+			// Log the error but don't fail the operation
+			fmt.Printf("Warning: Failed to cache ref resolution %s/%s:%s - %v\n", owner, repo, ref, err)
+		}
 	}
-	vr.cacheMutex.Unlock()
 
 	return sha, nil
 }
@@ -191,16 +200,15 @@ func (vr *VersionResolver) findAliases(owner, repo, targetSHA, currentVersion st
 
 // getTagsWithCache gets all tags for a repository with caching
 func (vr *VersionResolver) getTagsWithCache(owner, repo string) (map[string]string, error) {
-	cacheKey := fmt.Sprintf("%s/%s:tags", owner, repo)
-
-	vr.cacheMutex.RLock()
-	if entry, exists := vr.cache[cacheKey]; exists {
-		if time.Since(entry.timestamp) < vr.cacheTTL && entry.tags != nil {
-			vr.cacheMutex.RUnlock()
-			return entry.tags, nil
+	// If we have a cache, try to use it
+	if vr.cache != nil {
+		if tags, found, err := vr.cache.GetTags(owner, repo); err == nil && found {
+			return tags, nil
+		} else if err != nil {
+			// Log the error but continue with API resolution
+			fmt.Printf("Warning: Cache error when getting tags %s/%s - %v\n", owner, repo, err)
 		}
 	}
-	vr.cacheMutex.RUnlock()
 
 	// Fetch tags using GitHub API
 	tags, err := vr.client.GetTagsForRepo(owner, repo)
@@ -208,13 +216,13 @@ func (vr *VersionResolver) getTagsWithCache(owner, repo string) (map[string]stri
 		return nil, err
 	}
 
-	// Cache the result
-	vr.cacheMutex.Lock()
-	vr.cache[cacheKey] = &cacheEntry{
-		tags:      tags,
-		timestamp: time.Now(),
+	// Cache the result if we have a cache
+	if vr.cache != nil {
+		if err := vr.cache.SetTags(owner, repo, tags, vr.cacheTTL); err != nil {
+			// Log the error but don't fail the operation
+			fmt.Printf("Warning: Failed to cache tags %s/%s - %v\n", owner, repo, err)
+		}
 	}
-	vr.cacheMutex.Unlock()
 
 	return tags, nil
 }
@@ -222,31 +230,29 @@ func (vr *VersionResolver) getTagsWithCache(owner, repo string) (map[string]stri
 // GetCachedVersionInfo retrieves comprehensive version information from cache
 // Returns version->SHA mappings and SHA->aliases mappings if available in cache
 func (vr *VersionResolver) GetCachedVersionInfo(owner, repo string) (map[string]string, map[string][]string, bool) {
-	cacheKey := fmt.Sprintf("%s/%s:comprehensive", owner, repo)
-
-	vr.cacheMutex.RLock()
-	defer vr.cacheMutex.RUnlock()
-
-	if entry, exists := vr.cache[cacheKey]; exists {
-		if time.Since(entry.timestamp) < vr.cacheTTL && entry.allVersions != nil {
-			return entry.allVersions, entry.aliases, true
-		}
+	if vr.cache == nil {
+		return nil, nil, false
 	}
 
-	return nil, nil, false
+	versions, aliases, found, err := vr.cache.GetComprehensiveVersionInfo(owner, repo)
+	if err != nil {
+		// Log the error but return not found
+		fmt.Printf("Warning: Cache error when getting comprehensive version info %s/%s - %v\n", owner, repo, err)
+		return nil, nil, false
+	}
+
+	return versions, aliases, found
 }
 
 // cacheComprehensiveVersionInfo stores complete version information for a repository
 func (vr *VersionResolver) cacheComprehensiveVersionInfo(owner, repo string, versions map[string]string, aliases map[string][]string) {
-	cacheKey := fmt.Sprintf("%s/%s:comprehensive", owner, repo)
+	if vr.cache == nil {
+		return
+	}
 
-	vr.cacheMutex.Lock()
-	defer vr.cacheMutex.Unlock()
-
-	vr.cache[cacheKey] = &cacheEntry{
-		timestamp:   time.Now(),
-		allVersions: versions,
-		aliases:     aliases,
+	if err := vr.cache.SetComprehensiveVersionInfo(owner, repo, versions, aliases, vr.cacheTTL); err != nil {
+		// Log the error but don't fail the operation
+		fmt.Printf("Warning: Failed to cache comprehensive version info %s/%s - %v\n", owner, repo, err)
 	}
 }
 

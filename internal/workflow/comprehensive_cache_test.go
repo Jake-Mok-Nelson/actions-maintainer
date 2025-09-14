@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"testing"
+
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/cache"
 )
 
 func TestVersionResolver_ComprehensiveCaching(t *testing.T) {
@@ -26,7 +28,7 @@ func TestVersionResolver_ComprehensiveCaching(t *testing.T) {
 		"v3":     sha3,
 	})
 
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	// Test 1: Resolve an action to populate comprehensive cache
 	actions := []ActionReference{
@@ -107,7 +109,7 @@ func TestVersionResolver_CacheFirstEquivalence(t *testing.T) {
 		"v4.1.0": sha,
 	})
 
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	// First, populate the comprehensive cache
 	resolver.ensureComprehensiveCache("actions", "checkout")
@@ -142,7 +144,7 @@ func TestVersionResolver_CacheFirstOutdatedCheck(t *testing.T) {
 		"v3": sha2,
 	})
 
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	// First, populate the comprehensive cache
 	resolver.ensureComprehensiveCache("actions", "checkout")
@@ -174,7 +176,7 @@ func TestVersionResolver_CacheFirstOutdatedCheck(t *testing.T) {
 
 func TestVersionResolver_BranchReferencesNotOutdated(t *testing.T) {
 	client := NewMockGitHubClient()
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	// Branch references should never be considered outdated
 	outdated, err := resolver.IsVersionOutdated("actions/checkout", "main", "v4")
@@ -204,7 +206,7 @@ func TestVersionResolver_CacheExpiration(t *testing.T) {
 		"v4": sha,
 	})
 
-	resolver := NewVersionResolver(client, false)
+	resolver := NewVersionResolverWithCache(client, false, cache.NewMemoryCache())
 
 	// Populate cache normally
 	resolver.ensureComprehensiveCache("actions", "checkout")
