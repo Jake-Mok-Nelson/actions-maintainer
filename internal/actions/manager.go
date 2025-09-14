@@ -318,16 +318,10 @@ func (m *Manager) determineSeverity(version string, rule *Rule) string {
 	return "low"
 }
 
-// versionMatches checks if a version matches a pattern (exact match for now)
-func (m *Manager) versionMatches(version, pattern string) bool {
-	return version == pattern
-}
-
 // extractMajorVersion extracts the major version number from a version string
 func extractMajorVersion(version string) string {
-	if strings.HasPrefix(version, "v") {
-		version = version[1:]
-	}
+	// Unconditionally trim leading 'v' to normalize version strings
+	version = strings.TrimPrefix(version, "v")
 
 	parts := strings.Split(version, ".")
 	if len(parts) > 0 {
