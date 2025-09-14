@@ -1,5 +1,13 @@
 # actions-maintainer
 
+---
+**NOTE**
+
+This project is in early development. The CLI and output format may change in future releases.
+There may be bugs and incomplete features.
+
+---
+
 A Go CLI tool that identifies and helps resolve TOIL around migration and updating GitHub Actions workflows.
 
 ## Features
