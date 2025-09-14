@@ -2,11 +2,17 @@ package workflow
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// Config holds configuration options for the workflow parser
+type Config struct {
+	Verbose bool
+}
 
 // Workflow represents a parsed GitHub Actions workflow
 type Workflow struct {
@@ -45,32 +51,71 @@ func ParseWorkflow(content, filePath, repoFullName string) ([]ActionReference, e
 	return ParseWorkflowWithResolver(content, filePath, repoFullName, nil)
 }
 
+// ParseWorkflowWithConfig parses a YAML workflow file with configuration
+func ParseWorkflowWithConfig(content, filePath, repoFullName string, config *Config) ([]ActionReference, error) {
+	return ParseWorkflowWithResolverAndConfig(content, filePath, repoFullName, nil, config)
+}
+
 // ParseWorkflowWithResolver parses a YAML workflow file and extracts action references
 // with optional version resolution
 func ParseWorkflowWithResolver(content, filePath, repoFullName string, resolver *VersionResolver) ([]ActionReference, error) {
+	return ParseWorkflowWithResolverAndConfig(content, filePath, repoFullName, resolver, &Config{Verbose: false})
+}
+
+// ParseWorkflowWithResolverAndConfig parses a YAML workflow file and extracts action references
+// with optional version resolution and configuration
+func ParseWorkflowWithResolverAndConfig(content, filePath, repoFullName string, resolver *VersionResolver, config *Config) ([]ActionReference, error) {
+	if config == nil {
+		config = &Config{Verbose: false}
+	}
+
+	if config.Verbose {
+		log.Printf("Workflow parsing: Starting to parse %s in repository %s", filePath, repoFullName)
+	}
+
 	var workflow Workflow
 	if err := yaml.Unmarshal([]byte(content), &workflow); err != nil {
+		if config.Verbose {
+			log.Printf("Workflow parsing: Failed to parse YAML in %s - %v", filePath, err)
+		}
 		return nil, fmt.Errorf("failed to parse workflow YAML: %w", err)
+	}
+
+	if config.Verbose {
+		log.Printf("Workflow parsing: Successfully parsed YAML for %s, found %d jobs", filePath, len(workflow.Jobs))
 	}
 
 	var references []ActionReference
 
 	// Process each job
 	for jobName, job := range workflow.Jobs {
+		if config.Verbose {
+			log.Printf("Workflow parsing: Processing job '%s' in %s", jobName, filePath)
+		}
+
 		// Check if job uses a reusable workflow
 		if job.Uses != "" {
+			if config.Verbose {
+				log.Printf("Workflow parsing: Found reusable workflow reference '%s' in job '%s'", job.Uses, jobName)
+			}
 			ref := parseActionRef(job.Uses, true)
 			if ref != nil {
 				ref.Context = fmt.Sprintf("job:%s", jobName)
 				ref.FilePath = filePath
 				ref.RepoFullName = repoFullName
 				references = append(references, *ref)
+				if config.Verbose {
+					log.Printf("Workflow parsing: Extracted reusable workflow reference - repository: %s, version: %s", ref.Repository, ref.Version)
+				}
 			}
 		}
 
 		// Process job steps
 		for stepIdx, step := range job.Steps {
 			if step.Uses != "" {
+				if config.Verbose {
+					log.Printf("Workflow parsing: Found action reference '%s' in job '%s', step %d", step.Uses, jobName, stepIdx+1)
+				}
 				ref := parseActionRef(step.Uses, false)
 				if ref != nil {
 					stepName := step.Name
@@ -81,9 +126,16 @@ func ParseWorkflowWithResolver(content, filePath, repoFullName string, resolver 
 					ref.FilePath = filePath
 					ref.RepoFullName = repoFullName
 					references = append(references, *ref)
+					if config.Verbose {
+						log.Printf("Workflow parsing: Extracted action reference - repository: %s, version: %s, context: %s", ref.Repository, ref.Version, ref.Context)
+					}
 				}
 			}
 		}
+	}
+
+	if config.Verbose {
+		log.Printf("Workflow parsing: Completed parsing %s, extracted %d action references", filePath, len(references))
 	}
 
 	return references, nil

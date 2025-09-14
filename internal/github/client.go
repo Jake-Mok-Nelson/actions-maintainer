@@ -3,15 +3,22 @@ package github
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/google/go-github/v65/github"
 	"golang.org/x/oauth2"
 )
 
+// Config holds configuration options for the GitHub client
+type Config struct {
+	Verbose bool
+}
+
 // Client wraps the GitHub API client with our specific functionality
 type Client struct {
-	client *github.Client
-	ctx    context.Context
+	client  *github.Client
+	ctx     context.Context
+	verbose bool
 }
 
 // Repository represents a GitHub repository with relevant metadata
@@ -31,6 +38,11 @@ type WorkflowFile struct {
 
 // NewClient creates a new GitHub API client with authentication
 func NewClient(token string) *Client {
+	return NewClientWithConfig(token, &Config{Verbose: false})
+}
+
+// NewClientWithConfig creates a new GitHub API client with authentication and configuration
+func NewClientWithConfig(token string, config *Config) *Client {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
@@ -39,14 +51,23 @@ func NewClient(token string) *Client {
 
 	client := github.NewClient(tc)
 
+	if config.Verbose {
+		log.Printf("GitHub client initialized with verbose logging enabled")
+	}
+
 	return &Client{
-		client: client,
-		ctx:    ctx,
+		client:  client,
+		ctx:     ctx,
+		verbose: config.Verbose,
 	}
 }
 
 // ListRepositories gets all repositories for a given owner (user or org)
 func (c *Client) ListRepositories(owner string) ([]Repository, error) {
+	if c.verbose {
+		log.Printf("GitHub API: Listing repositories for owner '%s'", owner)
+	}
+
 	var allRepos []Repository
 
 	opts := &github.RepositoryListOptions{
@@ -56,9 +77,20 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 	}
 
 	for {
+		if c.verbose {
+			log.Printf("GitHub API: GET /users/%s/repos (page=%d, per_page=%d)", owner, opts.Page, opts.PerPage)
+		}
+
 		repos, resp, err := c.client.Repositories.List(c.ctx, owner, opts)
 		if err != nil {
+			if c.verbose {
+				log.Printf("GitHub API: Error listing repositories - %v", err)
+			}
 			return nil, fmt.Errorf("failed to list repositories: %w", err)
+		}
+
+		if c.verbose {
+			log.Printf("GitHub API: Response status %d, received %d repositories", resp.StatusCode, len(repos))
 		}
 
 		for _, repo := range repos {
@@ -80,14 +112,26 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 		opts.Page = resp.NextPage
 	}
 
+	if c.verbose {
+		log.Printf("GitHub API: Total repositories found: %d", len(allRepos))
+	}
+
 	return allRepos, nil
 }
 
 // GetWorkflowFiles retrieves all workflow files from a repository's .github/workflows directory
 func (c *Client) GetWorkflowFiles(repo Repository) ([]WorkflowFile, error) {
+	if c.verbose {
+		log.Printf("GitHub API: Getting workflow files for repository '%s'", repo.FullName)
+	}
+
 	var workflowFiles []WorkflowFile
 
 	// Get contents of .github/workflows directory
+	if c.verbose {
+		log.Printf("GitHub API: GET /repos/%s/contents/.github/workflows", repo.FullName)
+	}
+
 	_, dirContent, resp, err := c.client.Repositories.GetContents(
 		c.ctx,
 		repo.Owner,
@@ -99,9 +143,19 @@ func (c *Client) GetWorkflowFiles(repo Repository) ([]WorkflowFile, error) {
 	if err != nil {
 		// If the directory doesn't exist, that's okay - no workflows
 		if resp != nil && resp.StatusCode == 404 {
+			if c.verbose {
+				log.Printf("GitHub API: No .github/workflows directory found (404) - repository has no workflows")
+			}
 			return workflowFiles, nil
 		}
+		if c.verbose {
+			log.Printf("GitHub API: Error getting workflow directory - %v", err)
+		}
 		return nil, fmt.Errorf("failed to get workflow directory: %w", err)
+	}
+
+	if c.verbose {
+		log.Printf("GitHub API: Response status %d, found %d items in workflows directory", resp.StatusCode, len(dirContent))
 	}
 
 	// Process each file in the workflows directory
@@ -113,7 +167,14 @@ func (c *Client) GetWorkflowFiles(repo Repository) ([]WorkflowFile, error) {
 		filename := item.GetName()
 		// Only process YAML/YML files
 		if !isWorkflowFile(filename) {
+			if c.verbose {
+				log.Printf("Skipping non-workflow file: %s", filename)
+			}
 			continue
+		}
+
+		if c.verbose {
+			log.Printf("GitHub API: GET /repos/%s/contents/%s", repo.FullName, item.GetPath())
 		}
 
 		// Get the file content
@@ -126,12 +187,22 @@ func (c *Client) GetWorkflowFiles(repo Repository) ([]WorkflowFile, error) {
 		)
 
 		if err != nil {
+			if c.verbose {
+				log.Printf("GitHub API: Error getting workflow file %s - %v", filename, err)
+			}
 			return nil, fmt.Errorf("failed to get workflow file %s: %w", filename, err)
 		}
 
 		content, err := fileContent.GetContent()
 		if err != nil {
+			if c.verbose {
+				log.Printf("Error decoding workflow file %s - %v", filename, err)
+			}
 			return nil, fmt.Errorf("failed to decode workflow file %s: %w", filename, err)
+		}
+
+		if c.verbose {
+			log.Printf("Successfully retrieved workflow file: %s (%d bytes)", item.GetPath(), len(content))
 		}
 
 		workflowFiles = append(workflowFiles, WorkflowFile{
@@ -139,6 +210,10 @@ func (c *Client) GetWorkflowFiles(repo Repository) ([]WorkflowFile, error) {
 			Path:       item.GetPath(),
 			Content:    content,
 		})
+	}
+
+	if c.verbose {
+		log.Printf("GitHub API: Total workflow files retrieved: %d", len(workflowFiles))
 	}
 
 	return workflowFiles, nil
