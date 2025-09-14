@@ -9,11 +9,13 @@ import (
 // MockVersionResolver implements VersionResolver for testing
 type MockVersionResolver struct {
 	equivalentVersions map[string]bool // maps "repo:v1:v2" to bool
+	outdatedVersions   map[string]bool // maps "repo:current:latest" to bool
 }
 
 func NewMockVersionResolver() *MockVersionResolver {
 	return &MockVersionResolver{
 		equivalentVersions: make(map[string]bool),
+		outdatedVersions:   make(map[string]bool),
 	}
 }
 
@@ -26,12 +28,37 @@ func (m *MockVersionResolver) AreVersionsEquivalent(repository, version1, versio
 	return false, nil
 }
 
+func (m *MockVersionResolver) IsVersionOutdated(repository, currentVersion, latestVersion string) (bool, error) {
+	key := repository + ":" + currentVersion + ":" + latestVersion
+	if result, exists := m.outdatedVersions[key]; exists {
+		return result, nil
+	}
+	
+	// Don't flag branch references as outdated (same logic as real resolver)
+	if currentVersion == "main" || currentVersion == "master" {
+		return false, nil
+	}
+	
+	// Check if versions are equivalent first - if so, not outdated
+	if equivalent, err := m.AreVersionsEquivalent(repository, currentVersion, latestVersion); err == nil && equivalent {
+		return false, nil
+	}
+	
+	// Default to checking if versions are different
+	return currentVersion != latestVersion, nil
+}
+
 func (m *MockVersionResolver) SetVersionsEquivalent(repository, version1, version2 string, equivalent bool) {
 	key := repository + ":" + version1 + ":" + version2
 	m.equivalentVersions[key] = equivalent
 	// Also set the reverse mapping
 	reverseKey := repository + ":" + version2 + ":" + version1
 	m.equivalentVersions[reverseKey] = equivalent
+}
+
+func (m *MockVersionResolver) SetVersionOutdated(repository, currentVersion, latestVersion string, outdated bool) {
+	key := repository + ":" + currentVersion + ":" + latestVersion
+	m.outdatedVersions[key] = outdated
 }
 
 func TestManager_AnalyzeActions_WithoutResolver(t *testing.T) {
