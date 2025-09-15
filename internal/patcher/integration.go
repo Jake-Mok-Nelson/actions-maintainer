@@ -65,7 +65,7 @@ func (wp *WorkflowPatcher) PatchStep(step *workflow.Step, fromVersion, toVersion
 		return nil, fmt.Errorf("failed to parse action reference: %s", step.Uses)
 	}
 
-	// Build patch for the with block
+	// Build patch for the with block (no location change in basic version)
 	patch, err := wp.patcher.BuildPatch(actionRef.Repository, fromVersion, toVersion, step.With)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build patch: %w", err)
@@ -74,6 +74,47 @@ func (wp *WorkflowPatcher) PatchStep(step *workflow.Step, fromVersion, toVersion
 	// Update the step's with block if patches were applied
 	if patch.Applied {
 		step.With = patch.UpdatedWith
+	}
+
+	return patch, nil
+}
+
+// PatchStepWithLocation applies patches to a workflow step with potential location change
+func (wp *WorkflowPatcher) PatchStepWithLocation(step *workflow.Step, fromVersion, toVersion, toRepository string) (*Patch, error) {
+	if step.Uses == "" {
+		return nil, fmt.Errorf("step does not use an action")
+	}
+
+	// Parse the action reference to get repository name
+	actionRef := parseActionRef(step.Uses)
+	if actionRef == nil {
+		return nil, fmt.Errorf("failed to parse action reference: %s", step.Uses)
+	}
+
+	// Build patch for the with block with potential location change
+	patch, err := wp.patcher.BuildPatchWithLocation(actionRef.Repository, fromVersion, toVersion, toRepository, step.With)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build patch: %w", err)
+	}
+
+	// Update the step's with block if patches were applied
+	if patch.Applied {
+		step.With = patch.UpdatedWith
+	}
+	
+	// If repository changed, update the uses field regardless of whether patches were applied
+	if toRepository != actionRef.Repository {
+		// Preserve any path after repository name (e.g., "owner/repo/path@version")
+		oldUses := step.Uses
+		re := regexp.MustCompile(`^([^/@]+/[^/@]+)(.*)@(.+)$`)
+		matches := re.FindStringSubmatch(oldUses)
+		if len(matches) == 4 {
+			path := matches[2] // Could be empty or "/subpath"
+			step.Uses = toRepository + path + "@" + toVersion
+		} else {
+			// Fallback to simple replacement
+			step.Uses = toRepository + "@" + toVersion
+		}
 	}
 
 	return patch, nil
@@ -102,8 +143,22 @@ func (wp *WorkflowPatcher) PatchWorkflowContent(content string, updates []Action
 			// Check if this step needs patching
 			for _, update := range updates {
 				if wp.stepMatchesUpdate(&step, update) {
-					// Apply patching
-					patch, err := wp.PatchStep(&step, update.FromVersion, update.ToVersion)
+					var patch *Patch
+					var err error
+					
+					// Determine target repository
+					targetRepo := update.ActionRepo
+					if update.ToActionRepo != "" {
+						targetRepo = update.ToActionRepo
+					}
+					
+					// Apply patching with potential location change
+					if targetRepo != update.ActionRepo {
+						patch, err = wp.PatchStepWithLocation(&step, update.FromVersion, update.ToVersion, targetRepo)
+					} else {
+						patch, err = wp.PatchStep(&step, update.FromVersion, update.ToVersion)
+					}
+					
 					if err != nil {
 						return content, allChanges, fmt.Errorf("failed to patch step in job %s, step %d: %w", jobName, stepIdx, err)
 					}
@@ -153,10 +208,11 @@ func (wp *WorkflowPatcher) PatchWorkflowContent(content string, updates []Action
 
 // ActionVersionUpdate represents an action version update that needs transformation
 type ActionVersionUpdate struct {
-	ActionRepo  string
-	FromVersion string
-	ToVersion   string
-	FilePath    string // workflow file path for context
+	ActionRepo     string // Original repository (fromRepository)
+	FromVersion    string
+	ToVersion      string
+	ToActionRepo   string // Target repository (if different from ActionRepo)
+	FilePath       string // workflow file path for context
 }
 
 // stepMatchesUpdate checks if a step matches an action version update
@@ -228,4 +284,9 @@ func (wp *WorkflowPatcher) PreviewChanges(repository, fromVersion, toVersion str
 // HasPatch checks if a patch is available for the given repository and version transition
 func (wp *WorkflowPatcher) HasPatch(repository, fromVersion, toVersion string) bool {
 	return wp.patcher.HasPatch(repository, fromVersion, toVersion)
+}
+
+// HasPatchWithLocation checks if a patch is available for the given repositories and version transition
+func (wp *WorkflowPatcher) HasPatchWithLocation(fromRepository, fromVersion, toVersion, toRepository string) bool {
+	return wp.patcher.HasPatchWithLocation(fromRepository, fromVersion, toVersion, toRepository)
 }

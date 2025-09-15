@@ -18,6 +18,7 @@ There may be bugs and incomplete features.
 - 🔍 **Repository Scanning**: Automatically scans all repositories for a GitHub owner/organization
 - 📋 **Workflow Analysis**: Parses `.github/workflows/*.yml` files to extract action dependencies
 - ⚡ **Version Management**: Identifies outdated, deprecated, and vulnerable action versions
+- 🏗️ **Location Migration**: Supports migration of actions to new repository locations with parameter transformation
 - 💾 **Smart Caching**: SQLite-based caching with TTL to avoid unnecessary API calls
 - 📊 **Detailed Reporting**: Comprehensive JSON output with statistics and issue summaries
 - 🔧 **Automated Updates**: Optionally creates pull requests with safe version updates
@@ -140,10 +141,17 @@ internal/
 ├── github/               # GitHub API client
 ├── workflow/             # Workflow parsing and analysis
 ├── actions/              # Action version management
+├── patcher/              # Action transformation and location migration
 ├── cache/                # SQLite caching with TTL
 ├── output/               # JSON output formatting
 └── pr/                   # Pull request creation
 ```
+
+The `patcher/` package provides sophisticated transformation capabilities including:
+- Parameter transformations during version upgrades
+- Repository location migration support  
+- Workflow content patching with change tracking
+- Rule-based transformation logic for common actions
 
 ## Examples
 
@@ -198,6 +206,63 @@ The tool includes rules for popular GitHub Actions:
 - `actions/cache` (latest: v4)
 - `actions/setup-go` (latest: v5)
 - `actions/setup-java` (latest: v4)
+
+## Action Location Migration
+
+The patcher system now supports migration of actions to new repository locations, allowing for seamless transitions when actions move or are reorganized. This feature supports:
+
+### Migration Types
+
+1. **Organization Migration**: Actions moving between organizations
+   ```yaml
+   # Before
+   - uses: old-org/standard-action@v3
+   
+   # After
+   - uses: new-org/standard-action@v3
+   ```
+
+2. **Repository Migration**: Actions moving to completely new repository names
+   ```yaml
+   # Before
+   - uses: legacy-org/deprecated-action@v1
+     with:
+       old-param: value
+   
+   # After  
+   - uses: modern-org/recommended-action@v2
+     with:
+       new-param: value
+       migrate-notice: "This action has been migrated..."
+   ```
+
+### Automatic Parameter Transformation
+
+During location migration, the patcher can also transform action parameters:
+
+- **Parameter Renaming**: `old-param` → `new-param`
+- **Parameter Addition**: Adding new required/recommended parameters
+- **Parameter Removal**: Removing deprecated parameters
+- **Value Modification**: Updating parameter values for compatibility
+
+### Configuration
+
+Location migration rules are defined in the patcher's rule system with both source and target repositories:
+
+```go
+{
+    FromVersion:    "v1",
+    ToVersion:      "v2", 
+    FromRepository: "legacy-org/deprecated-action",
+    ToRepository:   "modern-org/recommended-action",
+    Description:    "Migration to new maintainer with enhanced features",
+    Patches: []FieldPatch{
+        // Parameter transformations...
+    },
+}
+```
+
+This enables the tool to handle complex migration scenarios where actions not only change versions but also move to new locations with different parameter schemas.
 
 ## Contributing
 
