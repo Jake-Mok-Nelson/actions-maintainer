@@ -68,9 +68,81 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 		log.Printf("GitHub API: Listing repositories for owner '%s'", owner)
 	}
 
+	// First, determine if owner is a user or organization
+	isOrg, err := c.isOrganization(owner)
+	if err != nil {
+		if c.verbose {
+			log.Printf("GitHub API: Could not determine owner type, falling back to user endpoint - %v", err)
+		}
+		// Fall back to user endpoint if we can't determine the type
+		return c.listRepositoriesAsUser(owner)
+	}
+
+	if isOrg {
+		if c.verbose {
+			log.Printf("GitHub API: Owner '%s' detected as organization, using org endpoint", owner)
+		}
+		repos, err := c.listRepositoriesAsOrg(owner)
+		if err != nil {
+			if c.verbose {
+				log.Printf("GitHub API: Organization endpoint failed, falling back to user endpoint - %v", err)
+			}
+			// If org endpoint fails, fall back to user endpoint
+			// This handles cases where the token doesn't have org permissions
+			return c.listRepositoriesAsUser(owner)
+		}
+		return repos, nil
+	} else {
+		if c.verbose {
+			log.Printf("GitHub API: Owner '%s' detected as user, using user endpoint", owner)
+		}
+		return c.listRepositoriesAsUser(owner)
+	}
+}
+
+// isOrganization checks if the given owner is an organization
+func (c *Client) isOrganization(owner string) (bool, error) {
+	if c.verbose {
+		log.Printf("GitHub API: Checking if '%s' is an organization", owner)
+	}
+
+	// Try to get organization info
+	_, resp, err := c.client.Organizations.Get(c.ctx, owner)
+	if err != nil {
+		// If we get a 404, it's likely a user account
+		if resp != nil && resp.StatusCode == 404 {
+			if c.verbose {
+				log.Printf("GitHub API: '%s' is not an organization (404)", owner)
+			}
+			return false, nil
+		}
+		// If we get a 403, it might be a private org we don't have access to
+		// In this case, we should still try the org endpoint for listing repos
+		if resp != nil && resp.StatusCode == 403 {
+			if c.verbose {
+				log.Printf("GitHub API: '%s' might be a private organization (403), will try org endpoint", owner)
+			}
+			return true, nil
+		}
+		// Other errors (like 401) we should propagate for fallback handling
+		if c.verbose {
+			log.Printf("GitHub API: Error checking organization status for '%s' - %v", owner, err)
+		}
+		return false, err
+	}
+
+	if c.verbose {
+		log.Printf("GitHub API: '%s' confirmed as organization", owner)
+	}
+	return true, nil
+}
+
+// listRepositoriesAsOrg lists repositories for an organization
+func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
 	var allRepos []Repository
 
-	opts := &github.RepositoryListOptions{
+	opts := &github.RepositoryListByOrgOptions{
+		Type: "all", // Include public, private, and forked repositories
 		ListOptions: github.ListOptions{
 			PerPage: 100,
 		},
@@ -78,15 +150,15 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 
 	for {
 		if c.verbose {
-			log.Printf("GitHub API: GET /users/%s/repos (page=%d, per_page=%d)", owner, opts.Page, opts.PerPage)
+			log.Printf("GitHub API: GET /orgs/%s/repos (page=%d, per_page=%d, type=%s)", org, opts.Page, opts.PerPage, opts.Type)
 		}
 
-		repos, resp, err := c.client.Repositories.List(c.ctx, owner, opts)
+		repos, resp, err := c.client.Repositories.ListByOrg(c.ctx, org, opts)
 		if err != nil {
 			if c.verbose {
-				log.Printf("GitHub API: Error listing repositories - %v", err)
+				log.Printf("GitHub API: Error listing organization repositories - %v", err)
 			}
-			return nil, fmt.Errorf("failed to list repositories: %w", err)
+			return nil, fmt.Errorf("failed to list organization repositories: %w", err)
 		}
 
 		if c.verbose {
@@ -99,7 +171,7 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 			}
 
 			allRepos = append(allRepos, Repository{
-				Owner:         owner,
+				Owner:         org,
 				Name:          repo.GetName(),
 				DefaultBranch: repo.GetDefaultBranch(),
 				FullName:      repo.GetFullName(),
@@ -113,7 +185,61 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 	}
 
 	if c.verbose {
-		log.Printf("GitHub API: Total repositories found: %d", len(allRepos))
+		log.Printf("GitHub API: Total organization repositories found: %d", len(allRepos))
+	}
+
+	return allRepos, nil
+}
+
+// listRepositoriesAsUser lists repositories for a user
+func (c *Client) listRepositoriesAsUser(user string) ([]Repository, error) {
+	var allRepos []Repository
+
+	opts := &github.RepositoryListByUserOptions{
+		Type: "all", // Include public, private, and forked repositories
+		ListOptions: github.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	for {
+		if c.verbose {
+			log.Printf("GitHub API: GET /users/%s/repos (page=%d, per_page=%d, type=%s)", user, opts.Page, opts.PerPage, opts.Type)
+		}
+
+		repos, resp, err := c.client.Repositories.ListByUser(c.ctx, user, opts)
+		if err != nil {
+			if c.verbose {
+				log.Printf("GitHub API: Error listing user repositories - %v", err)
+			}
+			return nil, fmt.Errorf("failed to list user repositories: %w", err)
+		}
+
+		if c.verbose {
+			log.Printf("GitHub API: Response status %d, received %d repositories", resp.StatusCode, len(repos))
+		}
+
+		for _, repo := range repos {
+			if repo.GetDefaultBranch() == "" {
+				continue // Skip repos without default branch
+			}
+
+			allRepos = append(allRepos, Repository{
+				Owner:         user,
+				Name:          repo.GetName(),
+				DefaultBranch: repo.GetDefaultBranch(),
+				FullName:      repo.GetFullName(),
+			})
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	if c.verbose {
+		log.Printf("GitHub API: Total user repositories found: %d", len(allRepos))
 	}
 
 	return allRepos, nil

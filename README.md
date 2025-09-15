@@ -69,6 +69,20 @@ Set the token using:
 - `--token` flag
 - `GITHUB_TOKEN` environment variable
 
+### Organization vs User Repository Access
+
+The tool automatically detects whether the target is a GitHub user or organization and uses the appropriate API endpoints:
+
+- **Organizations**: Uses `/orgs/{org}/repos` endpoint with `type=all` to include private repositories
+- **Users**: Uses `/users/{user}/repos` endpoint with `type=all` to include private repositories
+- **Fallback behavior**: If organization endpoint fails due to permissions, automatically falls back to user endpoint
+
+For **private organizations**, ensure your token has:
+- Organization membership or appropriate repository access permissions
+- If you only have access to specific repositories within an organization, the tool will gracefully fall back to the user endpoint which may show fewer repositories
+
+Use `--verbose` flag to see which endpoints are being used and troubleshoot access issues.
+
 ## Output Format
 
 The tool outputs detailed JSON with the following structure:
