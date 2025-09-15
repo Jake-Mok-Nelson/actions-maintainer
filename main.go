@@ -98,7 +98,7 @@ func main() {
 				Name:     "rules-file",
 				Short:    "R",
 				Usage:    `--rules-file <file>`,
-				Help:     `Path to custom rules file (JSON format). Rules will be merged with defaults`,
+				Help:     `Path to custom rules file (JSON format). Rules will be merged with defaults. Supports version rules and repository migrations`,
 				Variable: true,
 			},
 		},
@@ -402,8 +402,24 @@ func loadRulesFromFile(filename string) ([]actions.Rule, error) {
 		if rule.Repository == "" {
 			return nil, fmt.Errorf("rule %d: repository field is required", i+1)
 		}
-		if rule.LatestVersion == "" {
-			return nil, fmt.Errorf("rule %d: latest_version field is required for repository %s", i+1, rule.Repository)
+
+		// Check if this is a migration rule or a standard version rule
+		isMigrationRule := rule.MigrateToRepository != "" || rule.MigrateToVersion != ""
+
+		if isMigrationRule {
+			// Migration rule validation
+			if rule.MigrateToRepository == "" {
+				return nil, fmt.Errorf("rule %d: migrate_to_repository field is required when migration is specified for repository %s", i+1, rule.Repository)
+			}
+			if rule.MigrateToVersion == "" {
+				return nil, fmt.Errorf("rule %d: migrate_to_version field is required when migration is specified for repository %s", i+1, rule.Repository)
+			}
+			// For migration rules, latest_version is optional (defaults to current behavior)
+		} else {
+			// Standard version rule validation
+			if rule.LatestVersion == "" {
+				return nil, fmt.Errorf("rule %d: latest_version field is required for repository %s", i+1, rule.Repository)
+			}
 		}
 	}
 

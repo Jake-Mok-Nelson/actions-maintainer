@@ -42,13 +42,16 @@ type ActionIssue struct {
 	Repository         string   `json:"repository"`
 	CurrentVersion     string   `json:"current_version"`
 	SuggestedVersion   string   `json:"suggested_version,omitempty"`
-	IssueType          string   `json:"issue_type"` // "outdated", "deprecated"
+	IssueType          string   `json:"issue_type"` // "outdated", "deprecated", "migration"
 	Severity           string   `json:"severity"`   // "low", "medium", "high", "critical"
 	Description        string   `json:"description"`
 	Context            string   `json:"context"` // where the issue was found
 	FilePath           string   `json:"file_path"`
 	SchemaChanges      []string `json:"schema_changes,omitempty"`      // Description of schema changes that will be applied
 	HasTransformations bool     `json:"has_transformations,omitempty"` // Whether this upgrade includes schema transformations
+
+	// Migration support: for actions that have moved to a new repository
+	MigrationTarget string `json:"migration_target,omitempty"` // Target repository for migration (e.g., "new-org/action@v1")
 }
 
 // Summary provides aggregate statistics about the scan

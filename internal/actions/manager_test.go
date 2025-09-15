@@ -634,3 +634,75 @@ func findIssueByVersionAndType(issues []output.ActionIssue, version, issueType s
 	}
 	return nil
 }
+
+// TestAnalyzeActions_WithMigrationRules tests analysis with repository migration rules
+func TestAnalyzeActions_WithMigrationRules(t *testing.T) {
+	// Create custom rules with migration directives
+	customRules := []Rule{
+		{
+			Repository:          "legacy-org/deprecated-action",
+			MigrateToRepository: "modern-org/recommended-action",
+			MigrateToVersion:    "v2",
+			Recommendation:      "This action has migrated to modern-org/recommended-action for better maintenance",
+		},
+		{
+			Repository:          "old-org/standard-action",
+			LatestVersion:       "v2",
+			MigrateToRepository: "new-org/standard-action",
+			MigrateToVersion:    "v3",
+			Recommendation:      "Organization migration from old-org to new-org",
+		},
+	}
+
+	manager := NewManagerWithResolverConfigAndRules(nil, &Config{Verbose: false}, customRules)
+
+	// Create test actions that should trigger migration issues
+	actions := []workflow.ActionReference{
+		{
+			Repository: "legacy-org/deprecated-action",
+			Version:    "v1",
+			Context:    "job1.step1",
+			FilePath:   ".github/workflows/test.yml",
+		},
+		{
+			Repository: "old-org/standard-action",
+			Version:    "v2",
+			Context:    "job1.step2",
+			FilePath:   ".github/workflows/test.yml",
+		},
+	}
+
+	issues := manager.AnalyzeActions(actions)
+
+	// Debug: print all issues
+	t.Logf("Found %d migration issues:", len(issues))
+	for i, issue := range issues {
+		t.Logf("Issue %d: %s@%s - %s (target: %s)", i+1, issue.Repository, issue.CurrentVersion, issue.IssueType, issue.MigrationTarget)
+	}
+
+	// Should find migration issues for both actions
+	if len(issues) < 2 {
+		t.Errorf("Expected at least 2 migration issues, got %d", len(issues))
+	}
+
+	// Check for migration issue for legacy-org/deprecated-action
+	legacyMigration := findIssueByVersionAndType(issues, "v1", "migration")
+	if legacyMigration == nil {
+		t.Fatal("Expected to find migration issue for legacy-org/deprecated-action@v1")
+	}
+	if legacyMigration.MigrationTarget != "modern-org/recommended-action@v2" {
+		t.Errorf("Expected migration target 'modern-org/recommended-action@v2', got '%s'", legacyMigration.MigrationTarget)
+	}
+	if legacyMigration.Severity != "medium" {
+		t.Errorf("Expected migration severity 'medium', got '%s'", legacyMigration.Severity)
+	}
+
+	// Check for migration issue for old-org/standard-action
+	orgMigration := findIssueByVersionAndType(issues, "v2", "migration")
+	if orgMigration == nil {
+		t.Fatal("Expected to find migration issue for old-org/standard-action@v2")
+	}
+	if orgMigration.MigrationTarget != "new-org/standard-action@v3" {
+		t.Errorf("Expected migration target 'new-org/standard-action@v3', got '%s'", orgMigration.MigrationTarget)
+	}
+}

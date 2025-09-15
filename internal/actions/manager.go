@@ -39,6 +39,10 @@ type Rule struct {
 	MinimumVersion     string   `json:"minimum_version,omitempty"`
 	DeprecatedVersions []string `json:"deprecated_versions,omitempty"`
 	Recommendation     string   `json:"recommendation,omitempty"`
+
+	// Migration support: for actions that have moved to a new repository
+	MigrateToRepository string `json:"migrate_to_repository,omitempty"`
+	MigrateToVersion    string `json:"migrate_to_version,omitempty"`
 }
 
 // NewManager creates a new actions manager with default rules
@@ -279,6 +283,48 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			}
 
 			issues = append(issues, issue)
+		}
+	}
+
+	// Check for repository migrations
+	if rule.MigrateToRepository != "" && rule.MigrateToVersion != "" {
+		if m.verbose {
+			log.Printf("Rule evaluation: Repository %s should migrate to %s@%s", action.Repository, rule.MigrateToRepository, rule.MigrateToVersion)
+		}
+
+		migrationTarget := fmt.Sprintf("%s@%s", rule.MigrateToRepository, rule.MigrateToVersion)
+		description := fmt.Sprintf("Action %s has migrated to %s", action.Repository, rule.MigrateToRepository)
+		if rule.Recommendation != "" {
+			description = rule.Recommendation
+		}
+
+		issue := output.ActionIssue{
+			Repository:      action.Repository,
+			CurrentVersion:  action.Version,
+			MigrationTarget: migrationTarget,
+			IssueType:       "migration",
+			Severity:        "medium",
+			Description:     description,
+			Context:         action.Context,
+			FilePath:        action.FilePath,
+		}
+
+		// Check if there are schema transformations for this migration
+		if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.MigrateToVersion); hasPatches {
+			issue.HasTransformations = true
+			issue.SchemaChanges = []string{patchInfo.Description}
+
+			// Add details about specific field changes
+			for _, patch := range patchInfo.Patches {
+				change := fmt.Sprintf("%s: %s", patch.Operation, patch.Reason)
+				issue.SchemaChanges = append(issue.SchemaChanges, change)
+			}
+		}
+
+		issues = append(issues, issue)
+
+		if m.verbose {
+			log.Printf("Rule evaluation: Created migration issue for %s -> %s with severity %s", action.Repository, migrationTarget, issue.Severity)
 		}
 	}
 
