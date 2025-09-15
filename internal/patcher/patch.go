@@ -30,10 +30,12 @@ type FieldPatch struct {
 
 // VersionPatch represents transformations needed for a version transition (internal for rules)
 type VersionPatch struct {
-	FromVersion string       `yaml:"from_version"`
-	ToVersion   string       `yaml:"to_version"`
-	Patches     []FieldPatch `yaml:"patches"`
-	Description string       `yaml:"description"` // High-level description of the migration
+	FromVersion    string       `yaml:"from_version"`
+	ToVersion      string       `yaml:"to_version"`
+	FromRepository string       `yaml:"from_repository,omitempty"` // Source repository if different from rule repository
+	ToRepository   string       `yaml:"to_repository,omitempty"`   // Target repository if different from rule repository
+	Patches        []FieldPatch `yaml:"patches"`
+	Description    string       `yaml:"description"` // High-level description of the migration
 }
 
 // ActionPatchRule defines transformation rules for a specific action (internal for rules)
@@ -72,10 +74,12 @@ type FieldModification struct {
 
 // Patch represents all changes needed for an action upgrade
 type Patch struct {
-	Repository  string `json:"repository"`
-	FromVersion string `json:"from_version"`
-	ToVersion   string `json:"to_version"`
-	Description string `json:"description"`
+	Repository     string `json:"repository"`
+	FromVersion    string `json:"from_version"`
+	ToVersion      string `json:"to_version"`
+	FromRepository string `json:"from_repository,omitempty"` // Source repository if different
+	ToRepository   string `json:"to_repository,omitempty"`   // Target repository if different
+	Description    string `json:"description"`
 
 	// Clear categorization of changes
 	Additions     []FieldAddition     `json:"additions,omitempty"`
@@ -110,37 +114,66 @@ func NewPatcher() *Patcher {
 // BuildPatch builds a patch for upgrading an action from one version to another
 // This is the main entry point that handles conditional logic and returns a complete patch
 func (p *Patcher) BuildPatch(repository, fromVersion, toVersion string, withBlock interface{}) (*Patch, error) {
+	return p.BuildPatchWithLocation(repository, fromVersion, toVersion, repository, withBlock)
+}
+
+// BuildPatchWithLocation builds a patch for upgrading an action with potential location change
+// This method supports both version updates and repository location migrations
+func (p *Patcher) BuildPatchWithLocation(fromRepository, fromVersion, toVersion, toRepository string, withBlock interface{}) (*Patch, error) {
 	patch := &Patch{
-		Repository:    repository,
-		FromVersion:   fromVersion,
-		ToVersion:     toVersion,
-		Applied:       false,
-		OriginalWith:  withBlock,
-		UpdatedWith:   withBlock,
-		Additions:     []FieldAddition{},
-		Removals:      []FieldRemoval{},
-		Renames:       []FieldRename{},
-		Modifications: []FieldModification{},
-		Warnings:      []string{},
+		Repository:     fromRepository, // Keep original for compatibility
+		FromRepository: fromRepository,
+		ToRepository:   toRepository,
+		FromVersion:    fromVersion,
+		ToVersion:      toVersion,
+		Applied:        false,
+		OriginalWith:   withBlock,
+		UpdatedWith:    withBlock,
+		Additions:      []FieldAddition{},
+		Removals:       []FieldRemoval{},
+		Renames:        []FieldRename{},
+		Modifications:  []FieldModification{},
+		Warnings:       []string{},
 	}
 
-	// Find the patch rule for this repository
-	rule, exists := p.rules[repository]
+	// Try to find patch rules - check both source and target repositories
+	var rule ActionPatchRule
+	var exists bool
+
+	// First, try the source repository
+	rule, exists = p.rules[fromRepository]
 	if !exists {
-		return patch, nil // No patch rules defined for this action
+		// If not found, try the target repository (for rules defined on the new location)
+		rule, exists = p.rules[toRepository]
 	}
 
-	// Find the appropriate version patch
+	if !exists {
+		return patch, nil // No patch rules defined for either repository
+	}
+
+	// Find the appropriate version patch that matches our migration
 	var versionPatch *VersionPatch
 	for _, vp := range rule.VersionPatches {
+		// Check for exact match with location change
 		if vp.FromVersion == fromVersion && vp.ToVersion == toVersion {
-			versionPatch = &vp
-			break
+			// If both repositories are specified in the patch, ensure they match
+			if vp.FromRepository != "" && vp.ToRepository != "" {
+				if vp.FromRepository == fromRepository && vp.ToRepository == toRepository {
+					versionPatch = &vp
+					break
+				}
+			} else {
+				// If no repository migration specified, match any same-repo transition
+				if fromRepository == toRepository {
+					versionPatch = &vp
+					break
+				}
+			}
 		}
 	}
 
 	if versionPatch == nil {
-		return patch, nil // No specific patch for this version transition
+		return patch, nil // No specific patch for this version/location transition
 	}
 
 	patch.Description = versionPatch.Description
@@ -157,7 +190,7 @@ func (p *Patcher) BuildPatch(repository, fromVersion, toVersion string, withBloc
 		return patch, fmt.Errorf("failed to apply patches: %w", err)
 	}
 
-	patch.Applied = len(patch.Additions) > 0 || len(patch.Removals) > 0 || len(patch.Renames) > 0 || len(patch.Modifications) > 0
+	patch.Applied = len(patch.Additions) > 0 || len(patch.Removals) > 0 || len(patch.Renames) > 0 || len(patch.Modifications) > 0 || (fromRepository != toRepository)
 	patch.UpdatedWith = updatedWith
 
 	return patch, nil
@@ -321,14 +354,33 @@ func (p *Patcher) AddPatchRule(rule ActionPatchRule) {
 
 // HasPatch checks if a patch is available for the given repository and version transition
 func (p *Patcher) HasPatch(repository, fromVersion, toVersion string) bool {
-	rule, exists := p.rules[repository]
+	return p.HasPatchWithLocation(repository, fromVersion, toVersion, repository)
+}
+
+// HasPatchWithLocation checks if a patch is available for the given repository and version transition with location change
+func (p *Patcher) HasPatchWithLocation(fromRepository, fromVersion, toVersion, toRepository string) bool {
+	// Try to find patch rules - check both source and target repositories
+	rule, exists := p.rules[fromRepository]
 	if !exists {
-		return false
+		rule, exists = p.rules[toRepository]
+		if !exists {
+			return false
+		}
 	}
 
 	for _, patch := range rule.VersionPatches {
 		if patch.FromVersion == fromVersion && patch.ToVersion == toVersion {
-			return true
+			// If both repositories are specified in the patch, ensure they match
+			if patch.FromRepository != "" && patch.ToRepository != "" {
+				if patch.FromRepository == fromRepository && patch.ToRepository == toRepository {
+					return true
+				}
+			} else {
+				// If no repository migration specified, match same-repo transitions
+				if fromRepository == toRepository {
+					return true
+				}
+			}
 		}
 	}
 	return false

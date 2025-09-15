@@ -381,4 +381,51 @@ func (p *Patcher) loadDefaultRules() {
 			},
 		},
 	}
+
+	// Example: Legacy action migration to new location
+	// This demonstrates how to handle actions that have moved to new repositories
+	p.rules["legacy-org/deprecated-action"] = ActionPatchRule{
+		Repository: "legacy-org/deprecated-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v1",
+				ToVersion:      "v2",
+				FromRepository: "legacy-org/deprecated-action",
+				ToRepository:   "modern-org/recommended-action",
+				Description:    "Migration from deprecated legacy action to new recommended location with enhanced features",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationAdd,
+						Field:     "migrate-notice",
+						Value:     "This action has been migrated to modern-org/recommended-action for better maintenance and support",
+						Reason:    "Informational field to track migration source",
+					},
+					{
+						Operation: OperationRename,
+						Field:     "old-param",
+						NewField:  "new-param",
+						Reason:    "Parameter renamed during migration to new action",
+					},
+				},
+			},
+		},
+	}
+
+	// Example: Organization migration
+	// Actions that moved from one organization to another
+	p.rules["old-org/standard-action"] = ActionPatchRule{
+		Repository: "old-org/standard-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v3",
+				ToVersion:      "v3",
+				FromRepository: "old-org/standard-action",
+				ToRepository:   "new-org/standard-action",
+				Description:    "Organization migration from old-org to new-org with same functionality",
+				Patches:        []FieldPatch{
+					// No parameter changes needed, just location change
+				},
+			},
+		},
+	}
 }
