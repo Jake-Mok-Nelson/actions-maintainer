@@ -451,3 +451,186 @@ func TestAnalyzeActions_LikeForLikeSuggestions(t *testing.T) {
 		t.Errorf("Expected SHA suggestion %s, got %s", expectedSHA, shaIssue.SuggestedVersion)
 	}
 }
+
+// TestMergeRules tests the mergeRules function
+func TestMergeRules(t *testing.T) {
+	defaultRules := []Rule{
+		{
+			Repository:    "actions/checkout",
+			LatestVersion: "v4",
+		},
+		{
+			Repository:    "actions/setup-node",
+			LatestVersion: "v4",
+		},
+	}
+
+	customRules := []Rule{
+		{
+			Repository:    "actions/checkout",
+			LatestVersion: "v5", // Override default
+		},
+		{
+			Repository:    "my-org/custom-action",
+			LatestVersion: "v2.0.0", // New rule
+		},
+	}
+
+	merged := mergeRules(defaultRules, customRules)
+
+	// Should have 3 rules total
+	if len(merged) != 3 {
+		t.Errorf("Expected 3 merged rules, got %d", len(merged))
+	}
+
+	// Check that custom rule overrode default
+	checkoutRule := findRuleInSlice(merged, "actions/checkout")
+	if checkoutRule == nil {
+		t.Fatal("Expected to find actions/checkout rule")
+	}
+	if checkoutRule.LatestVersion != "v5" {
+		t.Errorf("Expected actions/checkout to use custom version v5, got %s", checkoutRule.LatestVersion)
+	}
+
+	// Check that default rule without override is preserved
+	nodeRule := findRuleInSlice(merged, "actions/setup-node")
+	if nodeRule == nil {
+		t.Fatal("Expected to find actions/setup-node rule")
+	}
+	if nodeRule.LatestVersion != "v4" {
+		t.Errorf("Expected actions/setup-node to keep default version v4, got %s", nodeRule.LatestVersion)
+	}
+
+	// Check that new custom rule is added
+	customRule := findRuleInSlice(merged, "my-org/custom-action")
+	if customRule == nil {
+		t.Fatal("Expected to find my-org/custom-action rule")
+	}
+	if customRule.LatestVersion != "v2.0.0" {
+		t.Errorf("Expected my-org/custom-action version v2.0.0, got %s", customRule.LatestVersion)
+	}
+}
+
+// TestNewManagerWithResolverConfigAndRules tests the new constructor with custom rules
+func TestNewManagerWithResolverConfigAndRules(t *testing.T) {
+	customRules := []Rule{
+		{
+			Repository:    "my-org/test-action",
+			LatestVersion: "v3.0.0",
+		},
+	}
+
+	config := &Config{
+		Verbose:      false,
+		WorkflowOnly: false,
+	}
+
+	manager := NewManagerWithResolverConfigAndRules(nil, config, customRules)
+
+	if manager == nil {
+		t.Fatal("Expected manager to be created")
+	}
+
+	// Test that custom rule is present
+	rule := manager.findRule("my-org/test-action")
+	if rule == nil {
+		t.Fatal("Expected to find custom rule for my-org/test-action")
+	}
+	if rule.LatestVersion != "v3.0.0" {
+		t.Errorf("Expected custom rule version v3.0.0, got %s", rule.LatestVersion)
+	}
+
+	// Test that default rules are still present
+	defaultRule := manager.findRule("actions/checkout")
+	if defaultRule == nil {
+		t.Fatal("Expected to find default rule for actions/checkout")
+	}
+}
+
+// TestAnalyzeActions_WithCustomRules tests analyzing actions with custom rules
+func TestAnalyzeActions_WithCustomRules(t *testing.T) {
+	customRules := []Rule{
+		{
+			Repository:         "my-org/custom-action",
+			LatestVersion:      "v2.0.0",
+			DeprecatedVersions: []string{"v1.0.0"},
+		},
+	}
+
+	config := &Config{
+		Verbose:      false,
+		WorkflowOnly: false,
+	}
+
+	manager := NewManagerWithResolverConfigAndRules(nil, config, customRules)
+
+	actions := []workflow.ActionReference{
+		{
+			Repository: "my-org/custom-action",
+			Version:    "v1.5.0",
+			Context:    "uses",
+			FilePath:   ".github/workflows/test.yml",
+		},
+		{
+			Repository: "my-org/custom-action",
+			Version:    "v1.0.0", // deprecated
+			Context:    "uses",
+			FilePath:   ".github/workflows/test.yml",
+		},
+	}
+
+	issues := manager.AnalyzeActions(actions)
+
+	// Debug: print all issues
+	t.Logf("Found %d issues:", len(issues))
+	for i, issue := range issues {
+		t.Logf("Issue %d: %s@%s - %s (severity: %s)", i+1, issue.Repository, issue.CurrentVersion, issue.IssueType, issue.Severity)
+	}
+
+	// Should find 2 issues: one outdated, one deprecated (though v1.0.0 will be both)
+	if len(issues) < 2 {
+		t.Errorf("Expected at least 2 issues, got %d", len(issues))
+	}
+
+	// Check for outdated issue for v1.5.0
+	outdatedIssue := findIssueByVersionAndType(issues, "v1.5.0", "outdated")
+	if outdatedIssue == nil {
+		t.Fatal("Expected to find outdated issue for v1.5.0")
+	}
+
+	// Check for deprecated issue for v1.0.0
+	deprecatedIssue := findIssueByVersionAndType(issues, "v1.0.0", "deprecated")
+	if deprecatedIssue == nil {
+		t.Fatal("Expected to find deprecated issue for v1.0.0")
+	}
+}
+
+// Helper function to find a rule by repository in a slice
+func findRuleInSlice(rules []Rule, repository string) *Rule {
+	for i, rule := range rules {
+		if rule.Repository == repository {
+			return &rules[i]
+		}
+	}
+	return nil
+}
+
+// Helper function to find an issue by current version
+func findIssueByVersion(issues []output.ActionIssue, version string) *output.ActionIssue {
+	for i, issue := range issues {
+		if issue.CurrentVersion == version {
+			return &issues[i]
+		}
+	}
+	return nil
+}
+
+// Helper function to find an issue by current version and type
+func findIssueByVersionAndType(issues []output.ActionIssue, version, issueType string) *output.ActionIssue {
+	for i, issue := range issues {
+		if issue.CurrentVersion == version && issue.IssueType == issueType {
+			return &issues[i]
+		}
+	}
+	return nil
+}

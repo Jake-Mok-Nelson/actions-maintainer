@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -92,6 +94,13 @@ func main() {
 				Help:     `Target only reusable workflows, excluding regular actions`,
 				Variable: false,
 			},
+			{
+				Name:     "rules-file",
+				Short:    "R",
+				Usage:    `--rules-file <file>`,
+				Help:     `Path to custom rules file (JSON format). Rules will be merged with defaults`,
+				Variable: true,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -123,6 +132,7 @@ func handleScan(ctx climax.Context) int {
 	filterPattern, _ := ctx.Get("filter")
 	verbose := ctx.Is("verbose")
 	workflowOnly := ctx.Is("workflow-only")
+	rulesFile, _ := ctx.Get("rules-file")
 
 	if verbose {
 		log.Printf("Verbose logging enabled")
@@ -164,10 +174,26 @@ func handleScan(ctx climax.Context) int {
 
 	// Create version resolver with shared cache
 	versionResolver := workflow.NewVersionResolverWithCache(githubClient, skipResolution, cacheInstance)
-	actionManager := actions.NewManagerWithResolverAndConfig(versionResolver, &actions.Config{
+
+	// Load custom rules if provided
+	var customRules []actions.Rule
+	if rulesFile != "" {
+		if verbose {
+			log.Printf("Loading custom rules from file: %s", rulesFile)
+		}
+		var err error
+		customRules, err = loadRulesFromFile(rulesFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading rules file '%s': %v\n", rulesFile, err)
+			return 1
+		}
+		fmt.Printf("Loaded %d custom rules from %s\n", len(customRules), rulesFile)
+	}
+
+	actionManager := actions.NewManagerWithResolverConfigAndRules(versionResolver, &actions.Config{
 		Verbose:      verbose,
 		WorkflowOnly: workflowOnly,
-	})
+	}, customRules)
 
 	// Perform scan
 	fmt.Printf("Fetching repositories...\n")
@@ -351,4 +377,35 @@ func handleScan(ctx climax.Context) int {
 	}
 
 	return 0
+}
+
+// loadRulesFromFile loads custom rules from a JSON file
+func loadRulesFromFile(filename string) ([]actions.Rule, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open rules file: %w", err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read rules file: %w", err)
+	}
+
+	var rules []actions.Rule
+	if err := json.Unmarshal(data, &rules); err != nil {
+		return nil, fmt.Errorf("unable to parse rules file as JSON: %w", err)
+	}
+
+	// Validate rules
+	for i, rule := range rules {
+		if rule.Repository == "" {
+			return nil, fmt.Errorf("rule %d: repository field is required", i+1)
+		}
+		if rule.LatestVersion == "" {
+			return nil, fmt.Errorf("rule %d: latest_version field is required for repository %s", i+1, rule.Repository)
+		}
+	}
+
+	return rules, nil
 }

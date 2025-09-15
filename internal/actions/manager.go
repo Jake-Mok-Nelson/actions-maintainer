@@ -105,6 +105,32 @@ func NewManagerWithResolverAndConfig(resolver VersionResolver, config *Config) *
 	}
 }
 
+// NewManagerWithResolverConfigAndRules creates a new actions manager with a version resolver, configuration, and custom rules
+func NewManagerWithResolverConfigAndRules(resolver VersionResolver, config *Config, customRules []Rule) *Manager {
+	if config == nil {
+		config = &Config{Verbose: false, WorkflowOnly: false}
+	}
+
+	// Merge custom rules with default rules
+	rules := mergeRules(getDefaultRules(), customRules)
+
+	if config.Verbose {
+		log.Printf("Actions manager initialized with version resolver, custom rules, and verbose logging enabled")
+		log.Printf("Using %d rules (%d default + %d custom)", len(rules), len(getDefaultRules()), len(customRules))
+		if config.WorkflowOnly {
+			log.Printf("Actions manager configured for workflow-only mode")
+		}
+	}
+
+	return &Manager{
+		rules:        rules,
+		patcher:      patcher.NewWorkflowPatcher(),
+		resolver:     resolver,
+		verbose:      config.Verbose,
+		workflowOnly: config.WorkflowOnly,
+	}
+}
+
 // AnalyzeActions analyzes action references and identifies issues
 func (m *Manager) AnalyzeActions(actions []workflow.ActionReference) []output.ActionIssue {
 	if m.verbose {
@@ -451,6 +477,28 @@ func (m *Manager) suggestLikeForLikeVersion(repository, currentVersion, latestTa
 	default:
 		return latestTagVersion
 	}
+}
+
+// mergeRules merges custom rules with default rules, with custom rules taking precedence
+func mergeRules(defaultRules, customRules []Rule) []Rule {
+	// Create a map of repositories from default rules
+	ruleMap := make(map[string]Rule)
+	for _, rule := range defaultRules {
+		ruleMap[rule.Repository] = rule
+	}
+
+	// Overlay custom rules (they take precedence)
+	for _, rule := range customRules {
+		ruleMap[rule.Repository] = rule
+	}
+
+	// Convert back to slice
+	var mergedRules []Rule
+	for _, rule := range ruleMap {
+		mergedRules = append(mergedRules, rule)
+	}
+
+	return mergedRules
 }
 
 // getDefaultRules returns the default set of action rules
