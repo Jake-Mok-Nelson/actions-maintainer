@@ -11,7 +11,8 @@ import (
 
 // Config holds configuration options for the workflow parser
 type Config struct {
-	Verbose bool
+	Verbose      bool
+	WorkflowOnly bool // Only target reusable workflows, exclude regular actions
 }
 
 // Workflow represents a parsed GitHub Actions workflow
@@ -110,27 +111,31 @@ func ParseWorkflowWithResolverAndConfig(content, filePath, repoFullName string, 
 			}
 		}
 
-		// Process job steps
-		for stepIdx, step := range job.Steps {
-			if step.Uses != "" {
-				if config.Verbose {
-					log.Printf("Workflow parsing: Found action reference '%s' in job '%s', step %d", step.Uses, jobName, stepIdx+1)
-				}
-				ref := parseActionRef(step.Uses, false)
-				if ref != nil {
-					stepName := step.Name
-					if stepName == "" {
-						stepName = fmt.Sprintf("step-%d", stepIdx+1)
-					}
-					ref.Context = fmt.Sprintf("job:%s/step:%s", jobName, stepName)
-					ref.FilePath = filePath
-					ref.RepoFullName = repoFullName
-					references = append(references, *ref)
+		// Process job steps (skip if workflow-only mode is enabled)
+		if !config.WorkflowOnly {
+			for stepIdx, step := range job.Steps {
+				if step.Uses != "" {
 					if config.Verbose {
-						log.Printf("Workflow parsing: Extracted action reference - repository: %s, version: %s, context: %s", ref.Repository, ref.Version, ref.Context)
+						log.Printf("Workflow parsing: Found action reference '%s' in job '%s', step %d", step.Uses, jobName, stepIdx+1)
+					}
+					ref := parseActionRef(step.Uses, false)
+					if ref != nil {
+						stepName := step.Name
+						if stepName == "" {
+							stepName = fmt.Sprintf("step-%d", stepIdx+1)
+						}
+						ref.Context = fmt.Sprintf("job:%s/step:%s", jobName, stepName)
+						ref.FilePath = filePath
+						ref.RepoFullName = repoFullName
+						references = append(references, *ref)
+						if config.Verbose {
+							log.Printf("Workflow parsing: Extracted action reference - repository: %s, version: %s, context: %s", ref.Repository, ref.Version, ref.Context)
+						}
 					}
 				}
 			}
+		} else if config.Verbose {
+			log.Printf("Workflow parsing: Skipping step processing for job '%s' due to workflow-only mode", jobName)
 		}
 	}
 

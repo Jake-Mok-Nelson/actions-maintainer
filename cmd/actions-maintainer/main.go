@@ -26,7 +26,7 @@ func main() {
 	scanCmd := climax.Command{
 		Name:  "scan",
 		Brief: "Scan GitHub repositories for action dependencies",
-		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs] [--filter <regex>] [--verbose]`,
+		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs] [--filter <regex>] [--verbose] [--workflow-only]`,
 		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and reports on action dependencies.`,
 		Flags: []climax.Flag{
 			{
@@ -85,6 +85,13 @@ func main() {
 				Help:     `Enable verbose logging for debugging (shows API calls, parsing steps, rule evaluations, and cache operations)`,
 				Variable: false,
 			},
+			{
+				Name:     "workflow-only",
+				Short:    "w",
+				Usage:    `--workflow-only`,
+				Help:     `Target only reusable workflows, excluding regular actions`,
+				Variable: false,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -115,13 +122,20 @@ func handleScan(ctx climax.Context) int {
 	skipResolution := ctx.Is("skip-resolution")
 	filterPattern, _ := ctx.Get("filter")
 	verbose := ctx.Is("verbose")
+	workflowOnly := ctx.Is("workflow-only")
 
 	if verbose {
 		log.Printf("Verbose logging enabled")
 		log.Printf("Scanning repositories for owner: %s", owner)
+		if workflowOnly {
+			log.Printf("Workflow-only mode enabled - targeting reusable workflows only")
+		}
 	}
 
 	fmt.Printf("Scanning repositories for owner: %s\n", owner)
+	if workflowOnly {
+		fmt.Printf("Mode: Workflow-only (targeting reusable workflows only)\n")
+	}
 
 	// Initialize cache for version resolution (only memory cache is supported)
 	cacheProvider, _ := ctx.Get("cache")
@@ -151,7 +165,8 @@ func handleScan(ctx climax.Context) int {
 	// Create version resolver with shared cache
 	versionResolver := workflow.NewVersionResolverWithCache(githubClient, skipResolution, cacheInstance)
 	actionManager := actions.NewManagerWithResolverAndConfig(versionResolver, &actions.Config{
-		Verbose: verbose,
+		Verbose:      verbose,
+		WorkflowOnly: workflowOnly,
 	})
 
 	// Perform scan
@@ -213,7 +228,8 @@ func handleScan(ctx climax.Context) int {
 				log.Printf("Parsing workflow file: %s", wf.Path)
 			}
 			actions, err := workflow.ParseWorkflowWithConfig(wf.Content, wf.Path, repo.FullName, &workflow.Config{
-				Verbose: verbose,
+				Verbose:      verbose,
+				WorkflowOnly: workflowOnly,
 			})
 			if err != nil {
 				fmt.Printf("  Warning: Failed to parse %s: %v\n", wf.Path, err)
