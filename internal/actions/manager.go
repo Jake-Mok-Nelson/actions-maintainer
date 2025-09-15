@@ -39,6 +39,10 @@ type Rule struct {
 	MinimumVersion     string   `json:"minimum_version,omitempty"`
 	DeprecatedVersions []string `json:"deprecated_versions,omitempty"`
 	Recommendation     string   `json:"recommendation,omitempty"`
+
+	// Migration support: for actions that have moved to a new repository
+	MigrateToRepository string `json:"migrate_to_repository,omitempty"`
+	MigrateToVersion    string `json:"migrate_to_version,omitempty"`
 }
 
 // NewManager creates a new actions manager with default rules
@@ -98,6 +102,32 @@ func NewManagerWithResolverAndConfig(resolver VersionResolver, config *Config) *
 
 	return &Manager{
 		rules:        getDefaultRules(),
+		patcher:      patcher.NewWorkflowPatcher(),
+		resolver:     resolver,
+		verbose:      config.Verbose,
+		workflowOnly: config.WorkflowOnly,
+	}
+}
+
+// NewManagerWithResolverConfigAndRules creates a new actions manager with a version resolver, configuration, and custom rules
+func NewManagerWithResolverConfigAndRules(resolver VersionResolver, config *Config, customRules []Rule) *Manager {
+	if config == nil {
+		config = &Config{Verbose: false, WorkflowOnly: false}
+	}
+
+	// Merge custom rules with default rules
+	rules := mergeRules(getDefaultRules(), customRules)
+
+	if config.Verbose {
+		log.Printf("Actions manager initialized with version resolver, custom rules, and verbose logging enabled")
+		log.Printf("Using %d rules (%d default + %d custom)", len(rules), len(getDefaultRules()), len(customRules))
+		if config.WorkflowOnly {
+			log.Printf("Actions manager configured for workflow-only mode")
+		}
+	}
+
+	return &Manager{
+		rules:        rules,
 		patcher:      patcher.NewWorkflowPatcher(),
 		resolver:     resolver,
 		verbose:      config.Verbose,
@@ -253,6 +283,48 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 			}
 
 			issues = append(issues, issue)
+		}
+	}
+
+	// Check for repository migrations
+	if rule.MigrateToRepository != "" && rule.MigrateToVersion != "" {
+		if m.verbose {
+			log.Printf("Rule evaluation: Repository %s should migrate to %s@%s", action.Repository, rule.MigrateToRepository, rule.MigrateToVersion)
+		}
+
+		migrationTarget := fmt.Sprintf("%s@%s", rule.MigrateToRepository, rule.MigrateToVersion)
+		description := fmt.Sprintf("Action %s has migrated to %s", action.Repository, rule.MigrateToRepository)
+		if rule.Recommendation != "" {
+			description = rule.Recommendation
+		}
+
+		issue := output.ActionIssue{
+			Repository:      action.Repository,
+			CurrentVersion:  action.Version,
+			MigrationTarget: migrationTarget,
+			IssueType:       "migration",
+			Severity:        "medium",
+			Description:     description,
+			Context:         action.Context,
+			FilePath:        action.FilePath,
+		}
+
+		// Check if there are schema transformations for this migration
+		if patchInfo, hasPatches := m.GetTransformationInfo(action.Repository, action.Version, rule.MigrateToVersion); hasPatches {
+			issue.HasTransformations = true
+			issue.SchemaChanges = []string{patchInfo.Description}
+
+			// Add details about specific field changes
+			for _, patch := range patchInfo.Patches {
+				change := fmt.Sprintf("%s: %s", patch.Operation, patch.Reason)
+				issue.SchemaChanges = append(issue.SchemaChanges, change)
+			}
+		}
+
+		issues = append(issues, issue)
+
+		if m.verbose {
+			log.Printf("Rule evaluation: Created migration issue for %s -> %s with severity %s", action.Repository, migrationTarget, issue.Severity)
 		}
 	}
 
@@ -451,6 +523,28 @@ func (m *Manager) suggestLikeForLikeVersion(repository, currentVersion, latestTa
 	default:
 		return latestTagVersion
 	}
+}
+
+// mergeRules merges custom rules with default rules, with custom rules taking precedence
+func mergeRules(defaultRules, customRules []Rule) []Rule {
+	// Create a map of repositories from default rules
+	ruleMap := make(map[string]Rule)
+	for _, rule := range defaultRules {
+		ruleMap[rule.Repository] = rule
+	}
+
+	// Overlay custom rules (they take precedence)
+	for _, rule := range customRules {
+		ruleMap[rule.Repository] = rule
+	}
+
+	// Convert back to slice
+	var mergedRules []Rule
+	for _, rule := range ruleMap {
+		mergedRules = append(mergedRules, rule)
+	}
+
+	return mergedRules
 }
 
 // getDefaultRules returns the default set of action rules
