@@ -422,7 +422,7 @@ func (p *Patcher) loadDefaultRules() {
 				FromRepository: "old-org/standard-action",
 				ToRepository:   "new-org/standard-action",
 				Description:    "Organization migration from old-org to new-org with same functionality",
-				Patches: []FieldPatch{
+				Patches:        []FieldPatch{
 					// No parameter changes needed, just location change
 				},
 			},

@@ -101,7 +101,7 @@ func (wp *WorkflowPatcher) PatchStepWithLocation(step *workflow.Step, fromVersio
 	if patch.Applied {
 		step.With = patch.UpdatedWith
 	}
-	
+
 	// If repository changed, update the uses field regardless of whether patches were applied
 	if toRepository != actionRef.Repository {
 		// Preserve any path after repository name (e.g., "owner/repo/path@version")
@@ -145,20 +145,20 @@ func (wp *WorkflowPatcher) PatchWorkflowContent(content string, updates []Action
 				if wp.stepMatchesUpdate(&step, update) {
 					var patch *Patch
 					var err error
-					
+
 					// Determine target repository
 					targetRepo := update.ActionRepo
 					if update.ToActionRepo != "" {
 						targetRepo = update.ToActionRepo
 					}
-					
+
 					// Apply patching with potential location change
 					if targetRepo != update.ActionRepo {
 						patch, err = wp.PatchStepWithLocation(&step, update.FromVersion, update.ToVersion, targetRepo)
 					} else {
 						patch, err = wp.PatchStep(&step, update.FromVersion, update.ToVersion)
 					}
-					
+
 					if err != nil {
 						return content, allChanges, fmt.Errorf("failed to patch step in job %s, step %d: %w", jobName, stepIdx, err)
 					}
@@ -208,11 +208,11 @@ func (wp *WorkflowPatcher) PatchWorkflowContent(content string, updates []Action
 
 // ActionVersionUpdate represents an action version update that needs transformation
 type ActionVersionUpdate struct {
-	ActionRepo     string // Original repository (fromRepository)
-	FromVersion    string
-	ToVersion      string
-	ToActionRepo   string // Target repository (if different from ActionRepo)
-	FilePath       string // workflow file path for context
+	ActionRepo   string // Original repository (fromRepository)
+	FromVersion  string
+	ToVersion    string
+	ToActionRepo string // Target repository (if different from ActionRepo)
+	FilePath     string // workflow file path for context
 }
 
 // stepMatchesUpdate checks if a step matches an action version update

@@ -270,7 +270,7 @@ func TestLocationMigration(t *testing.T) {
 		}
 	}
 
-	t.Logf("Successfully applied location migration - FromRepo: %s, ToRepo: %s, Applied changes: %d", 
+	t.Logf("Successfully applied location migration - FromRepo: %s, ToRepo: %s, Applied changes: %d",
 		patch.FromRepository, patch.ToRepository, len(patch.Additions)+len(patch.Renames))
 }
 
@@ -310,7 +310,7 @@ func TestOrganizationMigration(t *testing.T) {
 			totalChanges, len(patch.Additions), len(patch.Removals), len(patch.Renames), len(patch.Modifications))
 	}
 
-	t.Logf("Organization migration test completed - FromRepo: %s, ToRepo: %s", 
+	t.Logf("Organization migration test completed - FromRepo: %s, ToRepo: %s",
 		patch.FromRepository, patch.ToRepository)
 }
 

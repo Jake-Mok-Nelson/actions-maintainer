@@ -139,14 +139,14 @@ func (p *Patcher) BuildPatchWithLocation(fromRepository, fromVersion, toVersion,
 	// Try to find patch rules - check both source and target repositories
 	var rule ActionPatchRule
 	var exists bool
-	
+
 	// First, try the source repository
 	rule, exists = p.rules[fromRepository]
 	if !exists {
 		// If not found, try the target repository (for rules defined on the new location)
 		rule, exists = p.rules[toRepository]
 	}
-	
+
 	if !exists {
 		return patch, nil // No patch rules defined for either repository
 	}
