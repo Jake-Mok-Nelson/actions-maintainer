@@ -17,9 +17,12 @@ type Creator struct {
 }
 
 // UpdatePlan represents a plan to update actions in a repository
+// Each UpdatePlan corresponds to exactly one repository and contains ALL
+// action updates for that repository. This ensures that all patches for
+// a repository are applied together in a single pull request.
 type UpdatePlan struct {
 	Repository github.Repository
-	Updates    []ActionUpdate
+	Updates    []ActionUpdate // ALL updates for this repository
 }
 
 // ActionUpdate represents a single action update
@@ -40,6 +43,9 @@ func NewCreator(githubClient *github.Client) *Creator {
 }
 
 // CreateUpdatePRs creates pull requests for action updates
+// This function creates exactly one PR per UpdatePlan, and since PlanUpdates
+// ensures one plan per repository, this guarantees one PR per repository.
+// All patches for a repository are batched together in the same PR.
 func (c *Creator) CreateUpdatePRs(plans []UpdatePlan) ([]output.CreatedPR, error) {
 	var createdPRs []output.CreatedPR
 
@@ -48,6 +54,7 @@ func (c *Creator) CreateUpdatePRs(plans []UpdatePlan) ([]output.CreatedPR, error
 			continue
 		}
 
+		// Create a single PR that contains ALL updates for this repository
 		createdPR, err := c.createPRForPlan(plan)
 		if err != nil {
 			fmt.Printf("Failed to create PR for %s: %v\n", plan.Repository.FullName, err)
@@ -162,6 +169,9 @@ func (c *Creator) generatePRBody(plan UpdatePlan) string {
 }
 
 // PlanUpdates creates update plans from scan results
+// This function ensures that all patches for a repository are batched into a single UpdatePlan.
+// This is critical to ensure that when PRs are created, all related patches are applied together
+// in the same pull request, preventing merge conflicts and ensuring atomic updates.
 func PlanUpdates(repositories []output.RepositoryResult) []UpdatePlan {
 	var plans []UpdatePlan
 
@@ -180,7 +190,8 @@ func PlanUpdates(repositories []output.RepositoryResult) []UpdatePlan {
 			Updates: []ActionUpdate{},
 		}
 
-		// Group issues by file and action
+		// Collect ALL issues for this repository into a single plan
+		// This ensures patches are never split across multiple PRs for the same repository
 		for _, issue := range repo.Issues {
 			if issue.SuggestedVersion == "" {
 				continue // Skip issues without suggested fixes
@@ -200,6 +211,13 @@ func PlanUpdates(repositories []output.RepositoryResult) []UpdatePlan {
 		if len(plan.Updates) > 0 {
 			plans = append(plans, plan)
 		}
+	}
+
+	// Validate the critical batching invariant
+	if err := validateBatchingInvariant(repositories, plans); err != nil {
+		// This should never happen with the current implementation,
+		// but we check to prevent future regressions
+		fmt.Printf("CRITICAL ERROR: Batching invariant violated: %v\n", err)
 	}
 
 	return plans
@@ -254,4 +272,58 @@ func (c *Creator) UpdateWorkflowContentWithTransformations(content string, updat
 	finalContent := UpdateWorkflowContent(updatedContent, updates)
 
 	return finalContent, changes, nil
+}
+
+// validateBatchingInvariant ensures that the batching logic is working correctly
+// This function validates that:
+// 1. Each repository with issues gets exactly one plan
+// 2. No patches are split across multiple plans for the same repository
+// 3. All issues with suggested versions are included in plans
+func validateBatchingInvariant(repositories []output.RepositoryResult, plans []UpdatePlan) error {
+	// Count repositories that should have plans (have issues with suggested versions)
+	reposWithFixableIssues := 0
+	totalFixableIssues := 0
+	
+	for _, repo := range repositories {
+		hasFixableIssues := false
+		for _, issue := range repo.Issues {
+			if issue.SuggestedVersion != "" {
+				totalFixableIssues++
+				hasFixableIssues = true
+			}
+		}
+		if hasFixableIssues {
+			reposWithFixableIssues++
+		}
+	}
+
+	// Count total updates across all plans and check for duplicate repositories
+	totalUpdates := 0
+	repoPlans := make(map[string]int) // repo -> plan count
+	
+	for _, plan := range plans {
+		totalUpdates += len(plan.Updates)
+		repoPlans[plan.Repository.FullName]++
+	}
+
+	// Each repository should appear in exactly one plan
+	for repo, count := range repoPlans {
+		if count != 1 {
+			return fmt.Errorf("repository %s appears in %d plans, expected exactly 1", repo, count)
+		}
+	}
+
+	// Should have exactly one plan per repository with fixable issues
+	if len(plans) != reposWithFixableIssues {
+		return fmt.Errorf("expected %d plans for %d repositories with fixable issues, got %d plans", 
+			reposWithFixableIssues, reposWithFixableIssues, len(plans))
+	}
+
+	// Total updates should equal total fixable issues
+	if totalUpdates != totalFixableIssues {
+		return fmt.Errorf("expected %d updates (total fixable issues), got %d updates", 
+			totalFixableIssues, totalUpdates)
+	}
+
+	return nil
 }
