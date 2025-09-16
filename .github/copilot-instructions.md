@@ -80,6 +80,40 @@ Since automated tests exist but may not cover all functionality, ALWAYS manually
    GITHUB_TOKEN=fake_token ./bin/actions-maintainer scan --owner actions
    ```
 
+5. **Output Format Tests**:
+   ```bash
+   # Test JSON output (default)
+   ./bin/actions-maintainer scan --owner actions --token fake_token --output results.json
+   
+   # Test Jupyter notebook output
+   ./bin/actions-maintainer scan --owner actions --token fake_token --output results.ipynb
+   ```
+
+6. **CLI Option Tests**:
+   ```bash
+   # Test repository filtering
+   ./bin/actions-maintainer scan --owner actions --token fake_token --filter "checkout.*"
+   
+   # Test verbose mode
+   ./bin/actions-maintainer scan --owner actions --token fake_token --verbose
+   
+   # Test workflow-only mode
+   ./bin/actions-maintainer scan --owner actions --token fake_token --workflow-only
+   
+   # Test skip resolution
+   ./bin/actions-maintainer scan --owner actions --token fake_token --skip-resolution
+   ```
+
+7. **Transformation Testing** (requires valid token):
+   ```bash
+   # Test with custom rules file
+   echo '{"version_rules": []}' > test-rules.json
+   ./bin/actions-maintainer scan --owner actions --token real_token --rules-file test-rules.json
+   
+   # Test PR creation (dry run simulation)
+   ./bin/actions-maintainer scan --owner actions --token fake_token --create-prs
+   ```
+
 ### Expected Results
 - Help commands show usage information and exit with code 0
 - Missing owner/token errors show clear error messages and exit with code 1  
@@ -87,6 +121,11 @@ Since automated tests exist but may not cover all functionality, ALWAYS manually
 - Build produces binary of approximately 15,486,463 bytes on Linux (~15MB)
 - No output files are created when API calls fail
 - Tests pass: `make test` should show passing tests for actions, github, patcher, and workflow packages
+- JSON output format works when .json extension specified
+- Jupyter notebook format works when .ipynb extension specified  
+- CLI options are properly validated (missing required parameters show errors)
+- Verbose mode provides additional logging output
+- Repository filtering with regex patterns works as expected
 
 ### Required Validation Steps
 - ALWAYS run `make fmt` and `make lint` before committing changes
