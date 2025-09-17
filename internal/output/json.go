@@ -200,35 +200,103 @@ func calculateSummary(repositories []RepositoryResult) Summary {
 	return summary
 }
 
-// selectTopIssues selects the most important issues based on severity
+// WorkflowIssueGroup represents consolidated issues for a single workflow file
+type WorkflowIssueGroup struct {
+	FilePath    string
+	IssueCount  int
+	IssueType   string // Primary issue type (most common)
+	Description string // Primary description (most severe issue)
+	Severity    string // Highest severity among issues
+}
+
+// selectTopIssues selects the most important workflow files based on issue occurrence count
 func selectTopIssues(issues []ActionIssue, limit int) []ActionIssue {
-	if len(issues) <= limit {
-		return issues
+	if len(issues) == 0 {
+		return []ActionIssue{}
 	}
 
-	// Simple selection - in practice you might want more sophisticated sorting
+	// Group issues by workflow file path
+	workflowGroups := make(map[string]*WorkflowIssueGroup)
+
+	for _, issue := range issues {
+		group, exists := workflowGroups[issue.FilePath]
+		if !exists {
+			group = &WorkflowIssueGroup{
+				FilePath:    issue.FilePath,
+				IssueCount:  0,
+				IssueType:   issue.IssueType,
+				Description: issue.Description,
+				Severity:    issue.Severity,
+			}
+			workflowGroups[issue.FilePath] = group
+		}
+
+		group.IssueCount++
+
+		// Update primary issue type to most common one
+		// For simplicity, we'll keep the first issue type encountered
+		// but prioritize higher severity issues for description
+		if isHigherSeverity(issue.Severity, group.Severity) {
+			group.IssueType = issue.IssueType
+			group.Description = issue.Description
+			group.Severity = issue.Severity
+		}
+	}
+
+	// Convert to slice and sort by issue count (descending)
+	type groupWithCount struct {
+		group *WorkflowIssueGroup
+		count int
+	}
+
+	var sortedGroups []groupWithCount
+	for _, group := range workflowGroups {
+		sortedGroups = append(sortedGroups, groupWithCount{group: group, count: group.IssueCount})
+	}
+
+	// Sort by issue count (descending), then by severity as tiebreaker
+	for i := 0; i < len(sortedGroups)-1; i++ {
+		for j := i + 1; j < len(sortedGroups); j++ {
+			if sortedGroups[i].count < sortedGroups[j].count ||
+				(sortedGroups[i].count == sortedGroups[j].count &&
+					!isHigherSeverity(sortedGroups[i].group.Severity, sortedGroups[j].group.Severity)) {
+				sortedGroups[i], sortedGroups[j] = sortedGroups[j], sortedGroups[i]
+			}
+		}
+	}
+
+	// Convert back to ActionIssue format, limiting to the specified count
 	topIssues := make([]ActionIssue, 0, limit)
-
-	// First, add critical issues
-	for _, issue := range issues {
-		if issue.Severity == "critical" && len(topIssues) < limit {
-			topIssues = append(topIssues, issue)
+	for i, groupWithCount := range sortedGroups {
+		if i >= limit {
+			break
 		}
-	}
 
-	// Then add high severity issues
-	for _, issue := range issues {
-		if issue.Severity == "high" && len(topIssues) < limit {
-			topIssues = append(topIssues, issue)
-		}
-	}
-
-	// Fill remaining slots with medium and low severity
-	for _, issue := range issues {
-		if (issue.Severity == "medium" || issue.Severity == "low") && len(topIssues) < limit {
-			topIssues = append(topIssues, issue)
-		}
+		group := groupWithCount.group
+		// Create a representative ActionIssue for this workflow file
+		topIssues = append(topIssues, ActionIssue{
+			Repository:       "", // Not applicable for workflow-level grouping
+			CurrentVersion:   "", // Not applicable for workflow-level grouping
+			SuggestedVersion: "",
+			IssueType:        group.IssueType,
+			Severity:         group.Severity,
+			Description:      group.Description,
+			Context:          fmt.Sprintf("%d issues found", group.IssueCount),
+			FilePath:         group.FilePath,
+		})
 	}
 
 	return topIssues
+}
+
+// isHigherSeverity returns true if severity1 is higher than severity2
+func isHigherSeverity(severity1, severity2 string) bool {
+	severityOrder := map[string]int{
+		"critical": 4,
+		"high":     3,
+		"medium":   2,
+		"low":      1,
+	}
+
+	return severityOrder[severity1] > severityOrder[severity2]
 }

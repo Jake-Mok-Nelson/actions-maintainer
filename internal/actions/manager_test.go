@@ -728,9 +728,9 @@ func TestAnalyzeActions_WithPathSpecificRules(t *testing.T) {
 			Recommendation:      "Deploy workflow migrated to enhanced version",
 		},
 		{
-			Repository:          "org/workflows",
-			LatestVersion:       "v1",
-			Recommendation:      "Generic fallback rule for other workflows",
+			Repository:     "org/workflows",
+			LatestVersion:  "v1",
+			Recommendation: "Generic fallback rule for other workflows",
 		},
 	}
 
@@ -771,7 +771,7 @@ func TestAnalyzeActions_WithPathSpecificRules(t *testing.T) {
 
 	t.Logf("Manager has %d rules", len(manager.rules))
 	for i, rule := range manager.rules {
-		t.Logf("Rule %d: Repository=%s, WorkflowPath=%s, LatestVersion=%s, MigrateToRepository=%s", 
+		t.Logf("Rule %d: Repository=%s, WorkflowPath=%s, LatestVersion=%s, MigrateToRepository=%s",
 			i+1, rule.Repository, rule.WorkflowPath, rule.LatestVersion, rule.MigrateToRepository)
 	}
 

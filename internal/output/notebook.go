@@ -215,15 +215,14 @@ func createIssuesOverviewCell(result *ScanResult) NotebookCell {
 				severityIcon = "🟡"
 			}
 
-			source = append(source, fmt.Sprintf("### %d. %s %s\n", i+1, severityIcon, issue.Repository))
+			// Use file path as the main identifier since issues are now grouped by workflow file
+			source = append(source, fmt.Sprintf("### %d. %s %s\n", i+1, severityIcon, issue.FilePath))
 			source = append(source, "\n")
-			source = append(source, fmt.Sprintf("- **File:** `%s`\n", issue.FilePath))
-			source = append(source, fmt.Sprintf("- **Current Version:** `%s`\n", issue.CurrentVersion))
-			if issue.SuggestedVersion != "" {
-				source = append(source, fmt.Sprintf("- **Suggested Version:** `%s`\n", issue.SuggestedVersion))
-			}
-			source = append(source, fmt.Sprintf("- **Issue Type:** %s\n", issue.IssueType))
+			source = append(source, fmt.Sprintf("- **Finding:** %s\n", issue.IssueType))
 			source = append(source, fmt.Sprintf("- **Description:** %s\n", issue.Description))
+			if issue.Context != "" {
+				source = append(source, fmt.Sprintf("- **Issues Found:** %s\n", issue.Context))
+			}
 			source = append(source, "\n")
 		}
 	}
