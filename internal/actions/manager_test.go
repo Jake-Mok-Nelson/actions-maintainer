@@ -706,3 +706,130 @@ func TestAnalyzeActions_WithMigrationRules(t *testing.T) {
 		t.Errorf("Expected migration target 'new-org/standard-action@v3', got '%s'", orgMigration.MigrationTarget)
 	}
 }
+
+// TestAnalyzeActions_WithPathSpecificRules tests analyzing actions with path-specific rules
+func TestAnalyzeActions_WithPathSpecificRules(t *testing.T) {
+	// Custom rules with path-specific targeting
+	customRules := []Rule{
+		{
+			Repository:          "org/workflows",
+			WorkflowPath:        ".github/workflows/ci.yml",
+			MigrateToRepository: "new-org/workflows",
+			MigrateToVersion:    "v2",
+			MigrateToPath:       ".github/workflows/enhanced-ci.yml",
+			Recommendation:      "CI workflow migrated to enhanced version",
+		},
+		{
+			Repository:          "org/workflows",
+			WorkflowPath:        ".github/workflows/deploy.yml",
+			MigrateToRepository: "new-org/workflows",
+			MigrateToVersion:    "v2",
+			MigrateToPath:       ".github/workflows/enhanced-deploy.yml",
+			Recommendation:      "Deploy workflow migrated to enhanced version",
+		},
+		{
+			Repository:          "org/workflows",
+			LatestVersion:       "v1",
+			Recommendation:      "Generic fallback rule for other workflows",
+		},
+	}
+
+	config := &Config{
+		Verbose:      false, // Disable verbose for normal test execution
+		WorkflowOnly: false,
+	}
+
+	manager := NewManagerWithResolverConfigAndRules(nil, config, customRules)
+
+	// Test actions with different workflow paths
+	actions := []workflow.ActionReference{
+		{
+			Repository:   "org/workflows",
+			Version:      "v1",
+			WorkflowPath: ".github/workflows/ci.yml",
+			IsReusable:   true,
+			Context:      "job:test",
+			FilePath:     ".github/workflows/test.yml",
+		},
+		{
+			Repository:   "org/workflows",
+			Version:      "v1",
+			WorkflowPath: ".github/workflows/deploy.yml",
+			IsReusable:   true,
+			Context:      "job:deploy",
+			FilePath:     ".github/workflows/test.yml",
+		},
+		{
+			Repository:   "org/workflows",
+			Version:      "v1",
+			WorkflowPath: ".github/workflows/other.yml",
+			IsReusable:   true,
+			Context:      "job:other",
+			FilePath:     ".github/workflows/test.yml",
+		},
+	}
+
+	t.Logf("Manager has %d rules", len(manager.rules))
+	for i, rule := range manager.rules {
+		t.Logf("Rule %d: Repository=%s, WorkflowPath=%s, LatestVersion=%s, MigrateToRepository=%s", 
+			i+1, rule.Repository, rule.WorkflowPath, rule.LatestVersion, rule.MigrateToRepository)
+	}
+
+	issues := manager.AnalyzeActions(actions)
+
+	// We expect 4 issues: 2 migration + 2 outdated for the first two actions, 0 for the third
+	if len(issues) != 4 {
+		t.Fatalf("Expected 4 issues, got %d", len(issues))
+	}
+
+	t.Logf("Found %d path-specific issues:", len(issues))
+	for i, issue := range issues {
+		t.Logf("Issue %d: %s@%s - %s (target: %s)", i+1, issue.Repository, issue.CurrentVersion, issue.IssueType, issue.MigrationTarget)
+	}
+
+	// Check CI workflow migration
+	ciMigration := findIssueByRepositoryContextAndType(issues, "org/workflows", "job:test", "migration")
+	if ciMigration == nil {
+		t.Fatal("Expected to find migration issue for CI workflow")
+	}
+	if ciMigration.MigrationTarget != "new-org/workflows/.github/workflows/enhanced-ci.yml@v2" {
+		t.Errorf("Expected CI migration target 'new-org/workflows/.github/workflows/enhanced-ci.yml@v2', got '%s'", ciMigration.MigrationTarget)
+	}
+	if ciMigration.Description != "CI workflow migrated to enhanced version" {
+		t.Errorf("Expected CI migration description 'CI workflow migrated to enhanced version', got '%s'", ciMigration.Description)
+	}
+
+	// Check Deploy workflow migration
+	deployMigration := findIssueByRepositoryContextAndType(issues, "org/workflows", "job:deploy", "migration")
+	if deployMigration == nil {
+		t.Fatal("Expected to find migration issue for Deploy workflow")
+	}
+	if deployMigration.MigrationTarget != "new-org/workflows/.github/workflows/enhanced-deploy.yml@v2" {
+		t.Errorf("Expected Deploy migration target 'new-org/workflows/.github/workflows/enhanced-deploy.yml@v2', got '%s'", deployMigration.MigrationTarget)
+	}
+
+	// Check fallback rule for other workflow (should use generic rule)
+	otherIssues := findIssuesByRepositoryAndContext(issues, "org/workflows", "job:other")
+	if len(otherIssues) != 0 {
+		t.Errorf("Expected no issues for other workflow (version matches latest), got %d", len(otherIssues))
+	}
+}
+
+func findIssueByRepositoryContextAndType(issues []output.ActionIssue, repository, context, issueType string) *output.ActionIssue {
+	for _, issue := range issues {
+		if issue.Repository == repository && issue.Context == context && issue.IssueType == issueType {
+			return &issue
+		}
+	}
+	return nil
+}
+
+func findIssuesByRepositoryAndContext(issues []output.ActionIssue, repository, context string) []output.ActionIssue {
+	var found []output.ActionIssue
+	for _, issue := range issues {
+		if issue.Repository == repository && issue.Context == context {
+			found = append(found, issue)
+		}
+	}
+	return found
+}

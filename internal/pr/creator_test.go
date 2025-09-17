@@ -412,7 +412,7 @@ func TestPlanUpdates_BatchingInvariant(t *testing.T) {
 				Name:          "test-repo",
 				FullName:      "owner/test-repo",
 				DefaultBranch: "main",
-				Issues: make([]output.ActionIssue, 20), // 20 different action issues
+				Issues:        make([]output.ActionIssue, 20), // 20 different action issues
 			},
 			expectedLen: 1,
 		},
@@ -431,7 +431,7 @@ func TestPlanUpdates_BatchingInvariant(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			plans := PlanUpdates([]output.RepositoryResult{tc.repo})
-			
+
 			if len(plans) != tc.expectedLen {
 				t.Errorf("Expected %d plan(s), got %d", tc.expectedLen, len(plans))
 			}
@@ -440,7 +440,7 @@ func TestPlanUpdates_BatchingInvariant(t *testing.T) {
 				// All updates should be in the single plan
 				totalIssues := len(tc.repo.Issues)
 				actualUpdates := len(plans[0].Updates)
-				
+
 				if actualUpdates != totalIssues {
 					t.Errorf("Expected all %d issues to be converted to updates, got %d", totalIssues, actualUpdates)
 				}
@@ -596,7 +596,7 @@ func TestValidateBatchingInvariant(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateBatchingInvariant(tc.repositories, tc.plans)
-			
+
 			if tc.shouldFail {
 				if err == nil {
 					t.Error("Expected validation to fail but it passed")

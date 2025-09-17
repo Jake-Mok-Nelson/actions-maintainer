@@ -283,7 +283,7 @@ func validateBatchingInvariant(repositories []output.RepositoryResult, plans []U
 	// Count repositories that should have plans (have issues with suggested versions)
 	reposWithFixableIssues := 0
 	totalFixableIssues := 0
-	
+
 	for _, repo := range repositories {
 		hasFixableIssues := false
 		for _, issue := range repo.Issues {
@@ -300,7 +300,7 @@ func validateBatchingInvariant(repositories []output.RepositoryResult, plans []U
 	// Count total updates across all plans and check for duplicate repositories
 	totalUpdates := 0
 	repoPlans := make(map[string]int) // repo -> plan count
-	
+
 	for _, plan := range plans {
 		totalUpdates += len(plan.Updates)
 		repoPlans[plan.Repository.FullName]++
@@ -315,13 +315,13 @@ func validateBatchingInvariant(repositories []output.RepositoryResult, plans []U
 
 	// Should have exactly one plan per repository with fixable issues
 	if len(plans) != reposWithFixableIssues {
-		return fmt.Errorf("expected %d plans for %d repositories with fixable issues, got %d plans", 
+		return fmt.Errorf("expected %d plans for %d repositories with fixable issues, got %d plans",
 			reposWithFixableIssues, reposWithFixableIssues, len(plans))
 	}
 
 	// Total updates should equal total fixable issues
 	if totalUpdates != totalFixableIssues {
-		return fmt.Errorf("expected %d updates (total fixable issues), got %d updates", 
+		return fmt.Errorf("expected %d updates (total fixable issues), got %d updates",
 			totalFixableIssues, totalUpdates)
 	}
 

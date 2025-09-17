@@ -277,6 +277,12 @@ Location migration rules are defined in the patcher's rule system with both sour
 
 This enables the tool to handle complex migration scenarios where actions not only change versions but also move to new locations with different parameter schemas.
 
+## Documentation
+
+For detailed guides and advanced usage:
+
+- **[Reusable Workflow Migration Guide](docs/reusable-workflow-migration-guide.md)** - Comprehensive guide for migrating reusable workflows from one repository to another
+
 ## Contributing
 
 1. Follow the KISS principle - keep it simple and readable
