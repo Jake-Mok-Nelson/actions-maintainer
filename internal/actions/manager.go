@@ -585,8 +585,8 @@ func mergeRules(defaultRules, customRules []Rule) []Rule {
 		replaced := false
 		// Check if this custom rule should replace an existing rule
 		for i, existingRule := range mergedRules {
-			if existingRule.Repository == customRule.Repository && 
-			   existingRule.WorkflowPath == customRule.WorkflowPath {
+			if existingRule.Repository == customRule.Repository &&
+				existingRule.WorkflowPath == customRule.WorkflowPath {
 				// Replace existing rule with same repository and path
 				mergedRules[i] = customRule
 				replaced = true
