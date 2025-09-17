@@ -17,9 +17,8 @@ There may be bugs and incomplete features.
 
 - 🔍 **Repository Scanning**: Automatically scans all repositories for a GitHub owner/organization
 - 📋 **Workflow Analysis**: Parses `.github/workflows/*.yml` files to extract action dependencies
-- ⚡ **Version Management**: Identifies outdated, deprecated, and vulnerable action versions
+- ⚡ **Version Management**: Identity actions and workflows that need updating based on rules
 - 🏗️ **Location Migration**: Supports migration of actions to new repository locations with parameter transformation
-- 💾 **Smart Caching**: SQLite-based caching with TTL to avoid unnecessary API calls
 - 📊 **Detailed Reporting**: Comprehensive JSON output with statistics and issue summaries
 - 🔧 **Automated Updates**: Optionally creates pull requests with safe version updates
 
