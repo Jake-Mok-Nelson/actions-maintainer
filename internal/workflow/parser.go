@@ -41,6 +41,7 @@ type Step struct {
 type ActionReference struct {
 	Repository   string // e.g., "actions/checkout"
 	Version      string // e.g., "v4", "main", commit SHA
+	WorkflowPath string // e.g., ".github/workflows/ci.yml" (for reusable workflows)
 	IsReusable   bool   // true if this is a reusable workflow call
 	Context      string // where this action was found (job name, step name)
 	FilePath     string // path to the workflow file
@@ -160,20 +161,22 @@ func parseActionRef(uses string, isReusable bool) *ActionReference {
 
 	// Regular expression to parse action references
 	// Supports: owner/repo@version, owner/repo/path@version
-	re := regexp.MustCompile(`^([^/@]+/[^/@]+)(?:/[^@]*)?@(.+)$`)
+	re := regexp.MustCompile(`^([^/@]+/[^/@]+)(?:/([^@]*))?@(.+)$`)
 	matches := re.FindStringSubmatch(uses)
 
-	if len(matches) != 3 {
+	if len(matches) != 4 {
 		return nil // Invalid format
 	}
 
 	repository := matches[1]
-	version := matches[2]
+	workflowPath := matches[2] // Will be empty for regular actions
+	version := matches[3]
 
 	return &ActionReference{
-		Repository: repository,
-		Version:    version,
-		IsReusable: isReusable,
+		Repository:   repository,
+		Version:      version,
+		WorkflowPath: workflowPath,
+		IsReusable:   isReusable,
 	}
 }
 

@@ -95,12 +95,24 @@ Create a custom rules file to define the migration:
 [
   {
     "repository": "old-org/shared-workflows",
+    "workflow_path": ".github/workflows/ci.yml",
     "migrate_to_repository": "new-org/common-workflows",
     "migrate_to_version": "v2",
-    "recommendation": "This workflow has moved to new-org/common-workflows with enhanced features and better performance"
+    "migrate_to_path": ".github/workflows/enhanced-ci.yml",
+    "recommendation": "CI workflow has moved to new-org/common-workflows with enhanced features and better performance"
+  },
+  {
+    "repository": "old-org/shared-workflows", 
+    "workflow_path": ".github/workflows/deploy.yml",
+    "migrate_to_repository": "new-org/common-workflows",
+    "migrate_to_version": "v2",
+    "migrate_to_path": ".github/workflows/enhanced-deploy.yml",
+    "recommendation": "Deploy workflow has moved to new-org/common-workflows with enhanced security and deployment features"
   }
 ]
 ```
+
+**Path-Specific Migration**: The tool now supports targeting specific workflow files within a repository using the `workflow_path` field. This allows for granular control over which workflows are migrated and where they go.
 
 ### Step 3: Set Up the Target Repository
 
@@ -131,6 +143,44 @@ Run the tool to create pull requests for all dependent repositories:
 
 ## Common Migration Scenarios
 
+### Path-Specific Targeting
+
+The tool now supports targeting specific workflow files within a repository, enabling precise control over which workflows are migrated:
+
+```yaml
+# Source workflow reference
+jobs:
+  test:
+    uses: old-org/workflows/.github/workflows/ci.yml@v1
+
+# After migration with path-specific rule
+jobs:
+  test:
+    uses: new-org/workflows/.github/workflows/enhanced-ci.yml@v2
+```
+
+**Path-Specific Rule Format:**
+```json
+[
+  {
+    "repository": "old-org/workflows",
+    "workflow_path": ".github/workflows/ci.yml", 
+    "migrate_to_repository": "new-org/workflows",
+    "migrate_to_version": "v2",
+    "migrate_to_path": ".github/workflows/enhanced-ci.yml",
+    "recommendation": "CI workflow enhanced with better caching and security"
+  }
+]
+```
+
+### Rule Priority
+
+When multiple rules match the same repository:
+1. **Exact path match** takes highest priority
+2. **Generic repository rule** (no `workflow_path`) serves as fallback
+
+This allows you to have specific rules for certain workflows and general rules for others in the same repository.
+
 ### Scenario 1: Organization Migration
 
 Moving workflows when changing organizations:
@@ -154,6 +204,19 @@ jobs:
     "repository": "old-company/workflows",
     "migrate_to_repository": "new-company/workflows",
     "migrate_to_version": "v1"
+  }
+]
+```
+
+For path-specific migrations:
+```json
+[
+  {
+    "repository": "old-company/workflows",
+    "workflow_path": ".github/workflows/ci.yml",
+    "migrate_to_repository": "new-company/workflows", 
+    "migrate_to_version": "v1",
+    "migrate_to_path": ".github/workflows/enhanced-ci.yml"
   }
 ]
 ```
@@ -330,6 +393,28 @@ curl -H "Authorization: token $GITHUB_TOKEN" \
 ]
 ```
 
+For targeting specific workflows:
+```json
+[
+  {
+    "repository": "old-company/shared-workflows",
+    "workflow_path": ".github/workflows/ci.yml",
+    "migrate_to_repository": "new-company/shared-workflows",
+    "migrate_to_version": "v1",
+    "migrate_to_path": ".github/workflows/ci.yml",
+    "recommendation": "CI workflow moved to new-company organization"
+  },
+  {
+    "repository": "old-company/shared-workflows",
+    "workflow_path": ".github/workflows/deploy.yml", 
+    "migrate_to_repository": "new-company/shared-workflows",
+    "migrate_to_version": "v1",
+    "migrate_to_path": ".github/workflows/deploy.yml",
+    "recommendation": "Deploy workflow moved to new-company organization"
+  }
+]
+```
+
 **Step 2**: Run migration:
 ```bash
 ./bin/actions-maintainer scan \
@@ -355,6 +440,26 @@ curl -H "Authorization: token $GITHUB_TOKEN" \
     "repository": "project-b/build-workflows", 
     "migrate_to_repository": "company/central-workflows",
     "migrate_to_version": "v1"
+  }
+]
+```
+
+For path-specific consolidation:
+```json
+[
+  {
+    "repository": "project-a/ci-workflows",
+    "workflow_path": ".github/workflows/test.yml",
+    "migrate_to_repository": "company/central-workflows",
+    "migrate_to_version": "v1",
+    "migrate_to_path": ".github/workflows/project-a-test.yml"
+  },
+  {
+    "repository": "project-b/build-workflows",
+    "workflow_path": ".github/workflows/build.yml", 
+    "migrate_to_repository": "company/central-workflows",
+    "migrate_to_version": "v1",
+    "migrate_to_path": ".github/workflows/project-b-build.yml"
   }
 ]
 ```

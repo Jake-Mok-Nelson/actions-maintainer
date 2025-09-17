@@ -40,9 +40,13 @@ type Rule struct {
 	DeprecatedVersions []string `json:"deprecated_versions,omitempty"`
 	Recommendation     string   `json:"recommendation,omitempty"`
 
+	// Path-specific matching for reusable workflows
+	WorkflowPath string `json:"workflow_path,omitempty"` // Optional path filter (e.g., ".github/workflows/ci.yml")
+
 	// Migration support: for actions that have moved to a new repository
 	MigrateToRepository string `json:"migrate_to_repository,omitempty"`
 	MigrateToVersion    string `json:"migrate_to_version,omitempty"`
+	MigrateToPath       string `json:"migrate_to_path,omitempty"` // Target path for migrations
 }
 
 // NewManager creates a new actions manager with default rules
@@ -190,16 +194,24 @@ func (m *Manager) AnalyzeActions(actions []workflow.ActionReference) []output.Ac
 func (m *Manager) analyzeAction(action workflow.ActionReference) []output.ActionIssue {
 	var issues []output.ActionIssue
 
-	rule := m.findRule(action.Repository)
+	rule := m.findRuleForAction(action)
 	if rule == nil {
 		if m.verbose {
-			log.Printf("Rule evaluation: No rules found for repository %s, skipping analysis", action.Repository)
+			pathInfo := ""
+			if action.WorkflowPath != "" {
+				pathInfo = fmt.Sprintf(" (path: %s)", action.WorkflowPath)
+			}
+			log.Printf("Rule evaluation: No rules found for repository %s%s, skipping analysis", action.Repository, pathInfo)
 		}
 		return issues // No rules for this action
 	}
 
 	if m.verbose {
-		log.Printf("Rule evaluation: Found rule for %s - latest: %s, minimum: %s, deprecated: %v", action.Repository, rule.LatestVersion, rule.MinimumVersion, rule.DeprecatedVersions)
+		pathInfo := ""
+		if rule.WorkflowPath != "" {
+			pathInfo = fmt.Sprintf(" (path: %s)", rule.WorkflowPath)
+		}
+		log.Printf("Rule evaluation: Found rule for %s%s - latest: %s, minimum: %s, deprecated: %v", action.Repository, pathInfo, rule.LatestVersion, rule.MinimumVersion, rule.DeprecatedVersions)
 	}
 
 	// Check for outdated versions
@@ -289,10 +301,20 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 	// Check for repository migrations
 	if rule.MigrateToRepository != "" && rule.MigrateToVersion != "" {
 		if m.verbose {
-			log.Printf("Rule evaluation: Repository %s should migrate to %s@%s", action.Repository, rule.MigrateToRepository, rule.MigrateToVersion)
+			pathInfo := ""
+			if action.WorkflowPath != "" {
+				pathInfo = fmt.Sprintf(" (path: %s)", action.WorkflowPath)
+			}
+			log.Printf("Rule evaluation: Repository %s%s should migrate to %s@%s", action.Repository, pathInfo, rule.MigrateToRepository, rule.MigrateToVersion)
 		}
 
-		migrationTarget := fmt.Sprintf("%s@%s", rule.MigrateToRepository, rule.MigrateToVersion)
+		// Build migration target with path if specified
+		migrationTarget := rule.MigrateToRepository
+		if rule.MigrateToPath != "" {
+			migrationTarget += "/" + rule.MigrateToPath
+		}
+		migrationTarget += "@" + rule.MigrateToVersion
+
 		description := fmt.Sprintf("Action %s has migrated to %s", action.Repository, rule.MigrateToRepository)
 		if rule.Recommendation != "" {
 			description = rule.Recommendation
@@ -331,7 +353,34 @@ func (m *Manager) analyzeAction(action workflow.ActionReference) []output.Action
 	return issues
 }
 
-// findRule finds a rule for the given repository
+// findRuleForAction finds a rule for the given action, considering both repository and workflow path
+func (m *Manager) findRuleForAction(action workflow.ActionReference) *Rule {
+	var matchingRule *Rule
+	var bestMatch *Rule
+
+	for _, rule := range m.rules {
+		if rule.Repository == action.Repository {
+			// If rule has no path specified, it matches any path for the repository
+			if rule.WorkflowPath == "" {
+				if matchingRule == nil {
+					matchingRule = &rule // Generic rule as fallback
+				}
+			} else if rule.WorkflowPath == action.WorkflowPath {
+				// Exact path match takes priority
+				bestMatch = &rule
+				break
+			}
+		}
+	}
+
+	// Return exact path match if found, otherwise return generic rule
+	if bestMatch != nil {
+		return bestMatch
+	}
+	return matchingRule
+}
+
+// findRule finds a rule for the given repository (legacy method for backward compatibility)
 func (m *Manager) findRule(repository string) *Rule {
 	for _, rule := range m.rules {
 		if rule.Repository == repository {
@@ -527,21 +576,27 @@ func (m *Manager) suggestLikeForLikeVersion(repository, currentVersion, latestTa
 
 // mergeRules merges custom rules with default rules, with custom rules taking precedence
 func mergeRules(defaultRules, customRules []Rule) []Rule {
-	// Create a map of repositories from default rules
-	ruleMap := make(map[string]Rule)
-	for _, rule := range defaultRules {
-		ruleMap[rule.Repository] = rule
-	}
+	// Start with default rules
+	mergedRules := make([]Rule, len(defaultRules))
+	copy(mergedRules, defaultRules)
 
-	// Overlay custom rules (they take precedence)
-	for _, rule := range customRules {
-		ruleMap[rule.Repository] = rule
-	}
-
-	// Convert back to slice
-	var mergedRules []Rule
-	for _, rule := range ruleMap {
-		mergedRules = append(mergedRules, rule)
+	// Add custom rules (they can coexist with default rules when different paths are specified)
+	for _, customRule := range customRules {
+		replaced := false
+		// Check if this custom rule should replace an existing rule
+		for i, existingRule := range mergedRules {
+			if existingRule.Repository == customRule.Repository && 
+			   existingRule.WorkflowPath == customRule.WorkflowPath {
+				// Replace existing rule with same repository and path
+				mergedRules[i] = customRule
+				replaced = true
+				break
+			}
+		}
+		// If no replacement happened, add as new rule
+		if !replaced {
+			mergedRules = append(mergedRules, customRule)
+		}
 	}
 
 	return mergedRules
