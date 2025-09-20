@@ -22,27 +22,27 @@ type mockPageData struct {
 func simulatePagination(pageData []mockPageData) []Repository {
 	var allRepos []Repository
 	currentPage := 1
-	
+
 	for {
 		// Find the data for the current page
 		var pageRepos []Repository
 		var nextPage int
-		
+
 		if currentPage <= len(pageData) {
 			pageRepos = pageData[currentPage-1].repos
 			nextPage = pageData[currentPage-1].nextPage
 		}
-		
+
 		// Add repos from this page
 		allRepos = append(allRepos, pageRepos...)
-		
+
 		// Check if there's a next page
 		if nextPage == 0 {
 			break
 		}
 		currentPage = nextPage
 	}
-	
+
 	return allRepos
 }
 
@@ -239,7 +239,7 @@ func TestPaginationLogic_SimulatedData(t *testing.T) {
 			DefaultBranch: "main",
 		}
 	}
-	
+
 	page2Repos := make([]Repository, 50)
 	for i := 0; i < 50; i++ {
 		page2Repos[i] = Repository{
@@ -249,21 +249,21 @@ func TestPaginationLogic_SimulatedData(t *testing.T) {
 			DefaultBranch: "main",
 		}
 	}
-	
+
 	pageData := []mockPageData{
 		{repos: page1Repos, nextPage: 2}, // Page 1: 100 repos, next page is 2
 		{repos: page2Repos, nextPage: 0}, // Page 2: 50 repos, no next page
 	}
-	
+
 	// Test the pagination simulation
 	allRepos := simulatePagination(pageData)
-	
+
 	// Verify we got all 150 repositories
 	expectedTotal := 150
 	if len(allRepos) != expectedTotal {
 		t.Errorf("Expected %d repositories, got %d", expectedTotal, len(allRepos))
 	}
-	
+
 	// Verify repository names are correct
 	for i, repo := range allRepos {
 		expectedName := fmt.Sprintf("repo-%d", i+1)
@@ -271,7 +271,7 @@ func TestPaginationLogic_SimulatedData(t *testing.T) {
 			t.Errorf("Expected repo %d to be named '%s', got '%s'", i, expectedName, repo.Name)
 		}
 	}
-	
+
 	// Verify all repos have correct owner
 	for _, repo := range allRepos {
 		if repo.Owner != "testorg" {
@@ -280,11 +280,11 @@ func TestPaginationLogic_SimulatedData(t *testing.T) {
 	}
 }
 
-// TestListRepositories_PaginationWithPartialFailure verifies that when pagination fails 
+// TestListRepositories_PaginationWithPartialFailure verifies that when pagination fails
 // on subsequent pages, we still return repositories from successful pages
 func TestListRepositories_PaginationWithPartialFailure(t *testing.T) {
 	currentPage := 0
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/orgs/partialfail":
@@ -296,7 +296,7 @@ func TestListRepositories_PaginationWithPartialFailure(t *testing.T) {
 		case "/orgs/partialfail/repos":
 			currentPage++
 			page := r.URL.Query().Get("page")
-			
+
 			if page == "" || page == "1" {
 				// First page succeeds with 100 repos
 				repos := make([]string, 100)
@@ -308,13 +308,13 @@ func TestListRepositories_PaginationWithPartialFailure(t *testing.T) {
 						"private": false
 					}`, i+1, i+1)
 				}
-				
+
 				baseURL := "http://" + r.Host + r.URL.Path
 				w.Header().Set("Link", fmt.Sprintf(`<%s?per_page=100&page=2&type=all>; rel="next"`, baseURL))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("[" + strings.Join(repos, ",") + "]"))
-				
+
 			} else if page == "2" {
 				// Second page fails with 500 error
 				w.WriteHeader(http.StatusInternalServerError)

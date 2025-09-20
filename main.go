@@ -204,7 +204,7 @@ func handleScan(ctx climax.Context) int {
 	}
 
 	fmt.Printf("Found %d repositories\n", len(repositories))
-	
+
 	// Add helpful information about potential pagination limitations
 	if len(repositories) > 0 && len(repositories)%100 == 0 {
 		fmt.Printf("Note: Repository count is a multiple of 100. If you expected more repositories, check the verbose logs for any pagination errors.\n")
