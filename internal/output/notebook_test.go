@@ -15,20 +15,20 @@ func TestCreateIssuesOverviewCell_WithGroupedIssues(t *testing.T) {
 		Summary: Summary{
 			TopIssues: []ActionIssue{
 				{
-					Repository:   "", // Empty for grouped issues
-					IssueType:    "outdated",
-					Severity:     "high",
-					Description:  "Multiple actions need updates",
-					Context:      "2 issues found",
-					FilePath:     ".github/workflows/ci.yml",
+					Repository:  "", // Empty for grouped issues
+					IssueType:   "outdated",
+					Severity:    "high",
+					Description: "Multiple actions need updates",
+					Context:     "2 issues found",
+					FilePath:    ".github/workflows/ci.yml",
 				},
 				{
-					Repository:   "", // Empty for grouped issues
-					IssueType:    "deprecated",
-					Severity:     "medium",
-					Description:  "Legacy action usage detected",
-					Context:      "1 issues found",
-					FilePath:     ".github/workflows/deploy.yml",
+					Repository:  "", // Empty for grouped issues
+					IssueType:   "deprecated",
+					Severity:    "medium",
+					Description: "Legacy action usage detected",
+					Context:     "1 issues found",
+					FilePath:    ".github/workflows/deploy.yml",
 				},
 			},
 		},

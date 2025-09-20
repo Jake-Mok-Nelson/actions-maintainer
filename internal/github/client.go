@@ -148,7 +148,9 @@ func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
 		},
 	}
 
+	pageCount := 0
 	for {
+		pageCount++
 		if c.verbose {
 			log.Printf("GitHub API: GET /orgs/%s/repos (page=%d, per_page=%d, type=%s)", org, opts.Page, opts.PerPage, opts.Type)
 		}
@@ -156,13 +158,21 @@ func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
 		repos, resp, err := c.client.Repositories.ListByOrg(c.ctx, org, opts)
 		if err != nil {
 			if c.verbose {
-				log.Printf("GitHub API: Error listing organization repositories - %v", err)
+				log.Printf("GitHub API: Error listing organization repositories on page %d - %v", pageCount, err)
 			}
-			return nil, fmt.Errorf("failed to list organization repositories: %w", err)
+			// If this is the first page, return the error as the operation completely failed
+			if pageCount == 1 {
+				return nil, fmt.Errorf("failed to list organization repositories: %w", err)
+			}
+			// If this is a subsequent page, log a warning but return what we have so far
+			if c.verbose {
+				log.Printf("GitHub API: Pagination failed on page %d, returning %d repositories from previous pages", pageCount, len(allRepos))
+			}
+			break
 		}
 
 		if c.verbose {
-			log.Printf("GitHub API: Response status %d, received %d repositories", resp.StatusCode, len(repos))
+			log.Printf("GitHub API: Response status %d, received %d repositories on page %d", resp.StatusCode, len(repos), pageCount)
 		}
 
 		for _, repo := range repos {
@@ -185,7 +195,7 @@ func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
 	}
 
 	if c.verbose {
-		log.Printf("GitHub API: Total organization repositories found: %d", len(allRepos))
+		log.Printf("GitHub API: Total organization repositories found: %d (across %d pages)", len(allRepos), pageCount)
 	}
 
 	return allRepos, nil
@@ -202,7 +212,9 @@ func (c *Client) listRepositoriesAsUser(user string) ([]Repository, error) {
 		},
 	}
 
+	pageCount := 0
 	for {
+		pageCount++
 		if c.verbose {
 			log.Printf("GitHub API: GET /users/%s/repos (page=%d, per_page=%d, type=%s)", user, opts.Page, opts.PerPage, opts.Type)
 		}
@@ -210,13 +222,21 @@ func (c *Client) listRepositoriesAsUser(user string) ([]Repository, error) {
 		repos, resp, err := c.client.Repositories.ListByUser(c.ctx, user, opts)
 		if err != nil {
 			if c.verbose {
-				log.Printf("GitHub API: Error listing user repositories - %v", err)
+				log.Printf("GitHub API: Error listing user repositories on page %d - %v", pageCount, err)
 			}
-			return nil, fmt.Errorf("failed to list user repositories: %w", err)
+			// If this is the first page, return the error as the operation completely failed
+			if pageCount == 1 {
+				return nil, fmt.Errorf("failed to list user repositories: %w", err)
+			}
+			// If this is a subsequent page, log a warning but return what we have so far
+			if c.verbose {
+				log.Printf("GitHub API: Pagination failed on page %d, returning %d repositories from previous pages", pageCount, len(allRepos))
+			}
+			break
 		}
 
 		if c.verbose {
-			log.Printf("GitHub API: Response status %d, received %d repositories", resp.StatusCode, len(repos))
+			log.Printf("GitHub API: Response status %d, received %d repositories on page %d", resp.StatusCode, len(repos), pageCount)
 		}
 
 		for _, repo := range repos {
@@ -239,7 +259,7 @@ func (c *Client) listRepositoriesAsUser(user string) ([]Repository, error) {
 	}
 
 	if c.verbose {
-		log.Printf("GitHub API: Total user repositories found: %d", len(allRepos))
+		log.Printf("GitHub API: Total user repositories found: %d (across %d pages)", len(allRepos), pageCount)
 	}
 
 	return allRepos, nil
