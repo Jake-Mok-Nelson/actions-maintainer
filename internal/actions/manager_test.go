@@ -134,7 +134,7 @@ func TestManager_AnalyzeActions_WithoutResolver(t *testing.T) {
 
 func TestManager_AnalyzeActions_WithResolver_EquivalentVersions(t *testing.T) {
 	resolver := NewMockVersionResolver()
-	
+
 	// Provide custom rules since default rules are no longer used
 	customRules := []Rule{
 		{
@@ -142,7 +142,7 @@ func TestManager_AnalyzeActions_WithResolver_EquivalentVersions(t *testing.T) {
 			LatestVersion: "v4",
 		},
 	}
-	
+
 	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Set up scenario where v4 and v4.2.1 are equivalent (same SHA)
@@ -169,7 +169,7 @@ func TestManager_AnalyzeActions_WithResolver_EquivalentVersions(t *testing.T) {
 
 func TestManager_AnalyzeActions_WithResolver_NonEquivalentVersions(t *testing.T) {
 	resolver := NewMockVersionResolver()
-	
+
 	// Provide custom rules since default rules are no longer used
 	customRules := []Rule{
 		{
@@ -177,7 +177,7 @@ func TestManager_AnalyzeActions_WithResolver_NonEquivalentVersions(t *testing.T)
 			LatestVersion: "v4",
 		},
 	}
-	
+
 	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Set up scenario where v3 and v4 are NOT equivalent (different SHAs)
@@ -209,7 +209,7 @@ func TestManager_AnalyzeActions_WithResolver_NonEquivalentVersions(t *testing.T)
 func TestManager_AnalyzeActions_WithResolver_ResolverFailure(t *testing.T) {
 	// Create a resolver that will return false (fall back to string comparison)
 	resolver := NewMockVersionResolver()
-	
+
 	// Provide custom rules since default rules are no longer used
 	customRules := []Rule{
 		{
@@ -217,7 +217,7 @@ func TestManager_AnalyzeActions_WithResolver_ResolverFailure(t *testing.T) {
 			LatestVersion: "v4",
 		},
 	}
-	
+
 	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Don't set any equivalencies, so resolver will return false/error
@@ -443,7 +443,7 @@ func TestSuggestLikeForLikeVersion_WithoutResolver(t *testing.T) {
 // TestAnalyzeActions_LikeForLikeSuggestions tests that the analyze method uses like-for-like suggestions
 func TestAnalyzeActions_LikeForLikeSuggestions(t *testing.T) {
 	resolver := NewMockVersionResolver()
-	
+
 	// Provide custom rules since default rules are no longer used
 	customRules := []Rule{
 		{
@@ -451,7 +451,7 @@ func TestAnalyzeActions_LikeForLikeSuggestions(t *testing.T) {
 			LatestVersion: "v4",
 		},
 	}
-	
+
 	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Set up v3 as outdated compared to v4

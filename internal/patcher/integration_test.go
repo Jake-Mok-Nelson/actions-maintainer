@@ -7,9 +7,94 @@ import (
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
+// createWorkflowPatcherWithMigrationRules creates a WorkflowPatcher with migration rules for testing
+func createWorkflowPatcherWithMigrationRules() *WorkflowPatcher {
+	wp := NewWorkflowPatcher()
+
+	// Add migration rules needed for tests
+	migrationRule := ActionPatchRule{
+		Repository: "legacy-org/deprecated-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v1",
+				ToVersion:      "v2",
+				FromRepository: "legacy-org/deprecated-action",
+				ToRepository:   "modern-org/recommended-action",
+				Description:    "Repository migration from legacy-org to modern-org",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRename,
+						Field:     "old-param",
+						NewField:  "new-param",
+						Reason:    "Parameter renamed during migration",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "migrate-notice",
+						Value:     "This action has been migrated to modern-org/recommended-action for better maintenance and support",
+						Reason:    "Migration tracking notice",
+					},
+				},
+			},
+		},
+	}
+	wp.patcher.AddPatchRule(migrationRule)
+
+	// Add organization migration rule
+	orgMigrationRule := ActionPatchRule{
+		Repository: "old-org/standard-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v3",
+				ToVersion:      "v3",
+				FromRepository: "old-org/standard-action",
+				ToRepository:   "new-org/standard-action",
+				Description:    "Organization migration from old-org to new-org with same functionality",
+				Patches:        []FieldPatch{},
+			},
+		},
+	}
+	wp.patcher.AddPatchRule(orgMigrationRule)
+
+	return wp
+}
+
+// createWorkflowPatcherWithCheckoutRules creates a WorkflowPatcher with checkout rules for testing
+func createWorkflowPatcherWithCheckoutRules() *WorkflowPatcher {
+	wp := NewWorkflowPatcher()
+
+	// Add checkout rules needed for tests
+	checkoutRule := ActionPatchRule{
+		Repository: "actions/checkout",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v1",
+				ToVersion:   "v4",
+				Description: "Major upgrade from v1 to v4 with token handling and fetch behavior changes",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRemove,
+						Field:     "token",
+						Reason:    "In v4, the token parameter is no longer required as it automatically uses GITHUB_TOKEN with appropriate permissions",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "fetch-depth",
+						Value:     1,
+						Reason:    "v4 defaults to shallow clone (fetch-depth: 1) for better performance. Explicitly set if full history needed",
+					},
+				},
+			},
+		},
+	}
+	wp.patcher.AddPatchRule(checkoutRule)
+
+	return wp
+}
+
 // TestWorkflowPatcherLocationMigration tests WorkflowPatcher with location changes
 func TestWorkflowPatcherLocationMigration(t *testing.T) {
-	wp := NewWorkflowPatcher()
+	wp := createWorkflowPatcherWithMigrationRules()
 
 	// Create a test step using legacy action
 	step := &workflow.Step{
@@ -85,7 +170,7 @@ func TestWorkflowPatcherOrganizationMigration(t *testing.T) {
 
 // TestWorkflowContentPatching tests patching of complete workflow content with location changes
 func TestWorkflowContentPatching(t *testing.T) {
-	wp := NewWorkflowPatcher()
+	wp := createWorkflowPatcherWithMigrationRules()
 
 	// Sample workflow content with legacy action
 	workflowContent := `
@@ -160,7 +245,7 @@ jobs:
 
 // TestPreservingActionPaths tests that action paths are preserved during migration
 func TestPreservingActionPaths(t *testing.T) {
-	wp := NewWorkflowPatcher()
+	wp := createWorkflowPatcherWithMigrationRules()
 
 	// Create a test step with action path
 	step := &workflow.Step{
@@ -192,7 +277,7 @@ func TestPreservingActionPaths(t *testing.T) {
 
 // TestHasPatchWithLocationIntegration tests the integration layer HasPatchWithLocation
 func TestHasPatchWithLocationIntegration(t *testing.T) {
-	wp := NewWorkflowPatcher()
+	wp := createWorkflowPatcherWithMigrationRules()
 
 	// Test that location migration patches are detected
 	if !wp.HasPatchWithLocation("legacy-org/deprecated-action", "v1", "v2", "modern-org/recommended-action") {
