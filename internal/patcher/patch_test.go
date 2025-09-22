@@ -4,6 +4,138 @@ import (
 	"testing"
 )
 
+// createPatcherWithCheckoutRules creates a patcher with actions/checkout rules for testing
+func createPatcherWithCheckoutRules() *Patcher {
+	patcher := NewPatcher()
+
+	// Manually add actions/checkout rules needed for tests
+	checkoutRule := ActionPatchRule{
+		Repository: "actions/checkout",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v1",
+				ToVersion:   "v4",
+				Description: "Major upgrade from v1 to v4 with token handling and fetch behavior changes",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRemove,
+						Field:     "token",
+						Reason:    "In v4, the token parameter is no longer required as it automatically uses GITHUB_TOKEN with appropriate permissions",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "fetch-depth",
+						Value:     1,
+						Reason:    "v4 defaults to shallow clone (fetch-depth: 1) for better performance. Explicitly set if full history needed",
+					},
+				},
+			},
+			{
+				FromVersion: "v3",
+				ToVersion:   "v4",
+				Description: "Minor upgrade from v3 to v4 with performance improvements",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationAdd,
+						Field:     "show-progress",
+						Value:     true,
+						Reason:    "v4 adds show-progress parameter for better user experience during large repository operations",
+					},
+				},
+			},
+		},
+	}
+	patcher.AddPatchRule(checkoutRule)
+	return patcher
+}
+
+// createPatcherWithSetupNodeRules creates a patcher with actions/setup-node rules for testing
+func createPatcherWithSetupNodeRules() *Patcher {
+	patcher := NewPatcher()
+
+	// Manually add actions/setup-node rules needed for tests
+	setupNodeRule := ActionPatchRule{
+		Repository: "actions/setup-node",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v2",
+				ToVersion:   "v4",
+				Description: "Upgrade from v2 to v4 with improved caching and registry support",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRename,
+						Field:     "version",
+						NewField:  "node-version",
+						Reason:    "Parameter renamed from 'version' to 'node-version' for better clarity",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "cache",
+						Value:     "npm",
+						Reason:    "v4 introduces built-in dependency caching",
+					},
+				},
+			},
+		},
+	}
+	patcher.AddPatchRule(setupNodeRule)
+	return patcher
+}
+
+// createPatcherWithMigrationRules creates a patcher with migration rules for testing
+func createPatcherWithMigrationRules() *Patcher {
+	patcher := NewPatcher()
+
+	// Add migration rules for testing
+	migrationRule := ActionPatchRule{
+		Repository: "legacy-org/deprecated-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v1",
+				ToVersion:      "v2",
+				FromRepository: "legacy-org/deprecated-action",
+				ToRepository:   "modern-org/recommended-action",
+				Description:    "Repository migration from legacy-org to modern-org",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRename,
+						Field:     "old-param",
+						NewField:  "new-param",
+						Reason:    "Parameter renamed during migration",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "migrate-notice",
+						Value:     "This action has been migrated to modern-org/recommended-action for better maintenance and support",
+						Reason:    "Migration tracking notice",
+					},
+				},
+			},
+		},
+	}
+	patcher.AddPatchRule(migrationRule)
+
+	// Add organization migration rule for other tests
+	orgMigrationRule := ActionPatchRule{
+		Repository: "old-org/standard-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v3",
+				ToVersion:      "v3",
+				FromRepository: "old-org/standard-action",
+				ToRepository:   "new-org/standard-action",
+				Description:    "Organization migration from old-org to new-org with same functionality",
+				Patches:        []FieldPatch{
+					// No parameter changes needed, just location change
+				},
+			},
+		},
+	}
+	patcher.AddPatchRule(orgMigrationRule)
+
+	return patcher
+}
+
 // TestBasicPatchOperations tests the basic patch operations
 func TestBasicPatchOperations(t *testing.T) {
 	patcher := NewPatcher()
@@ -37,7 +169,7 @@ func TestBasicPatchOperations(t *testing.T) {
 
 // TestCheckoutV1ToV4Transformation tests the transformation from checkout v1 to v4
 func TestCheckoutV1ToV4Transformation(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithCheckoutRules()
 
 	// Test data: simulate actions/checkout v1 with token
 	withBlock := map[string]interface{}{
@@ -88,7 +220,7 @@ func TestCheckoutV1ToV4Transformation(t *testing.T) {
 
 // TestSetupNodeV2ToV4Transformation tests setup-node parameter renaming
 func TestSetupNodeV2ToV4Transformation(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithSetupNodeRules()
 
 	// Test data: simulate actions/setup-node v2 with version parameter
 	withBlock := map[string]interface{}{
@@ -165,7 +297,7 @@ func TestNoTransformationForUnsupportedAction(t *testing.T) {
 
 // TestNilWithBlock tests handling of nil with blocks
 func TestNilWithBlock(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithCheckoutRules()
 
 	// Test with nil with block
 	patch, err := patcher.BuildPatch("actions/checkout", "v1", "v4", nil)
@@ -191,18 +323,51 @@ func TestNilWithBlock(t *testing.T) {
 // TestGetSupportedActions tests that we can retrieve supported actions
 func TestGetSupportedActions(t *testing.T) {
 	wp := NewWorkflowPatcher()
-	actions := wp.GetSupportedActions()
 
-	if len(actions) == 0 {
-		t.Error("Expected at least some supported actions")
+	// Since default rules are no longer loaded, there should be no supported actions initially
+	actions := wp.GetSupportedActions()
+	if len(actions) != 0 {
+		t.Errorf("Expected no supported actions by default (no rules loaded), got %d", len(actions))
 	}
 
-	// Check for some expected actions
+	// Now add some custom rules and check that they show up
+	checkoutRule := ActionPatchRule{
+		Repository: "actions/checkout",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v1",
+				ToVersion:   "v4",
+				Description: "Test rule",
+				Patches:     []FieldPatch{},
+			},
+		},
+	}
+
+	setupNodeRule := ActionPatchRule{
+		Repository: "actions/setup-node",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v2",
+				ToVersion:   "v4",
+				Description: "Test rule",
+				Patches:     []FieldPatch{},
+			},
+		},
+	}
+
+	wp.patcher.AddPatchRule(checkoutRule)
+	wp.patcher.AddPatchRule(setupNodeRule)
+
+	// Now we should have 2 supported actions
+	actions = wp.GetSupportedActions()
+	if len(actions) != 2 {
+		t.Errorf("Expected 2 supported actions after adding rules, got %d", len(actions))
+	}
+
+	// Check for the expected actions
 	expectedActions := []string{
 		"actions/checkout",
 		"actions/setup-node",
-		"actions/setup-python",
-		"actions/upload-artifact",
 	}
 
 	for _, expected := range expectedActions {
@@ -214,7 +379,7 @@ func TestGetSupportedActions(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("Expected action %s to be supported", expected)
+			t.Errorf("Expected action %s to be supported after adding rule", expected)
 		}
 	}
 
@@ -223,7 +388,7 @@ func TestGetSupportedActions(t *testing.T) {
 
 // TestLocationMigration tests migration of actions to new repository locations
 func TestLocationMigration(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithMigrationRules()
 
 	// Test data: simulate legacy action migration
 	withBlock := map[string]interface{}{
@@ -316,7 +481,21 @@ func TestOrganizationMigration(t *testing.T) {
 
 // TestHasPatchWithLocation tests the HasPatchWithLocation method
 func TestHasPatchWithLocation(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithMigrationRules()
+
+	// Also add checkout rules for the regular patch test
+	checkoutRule := ActionPatchRule{
+		Repository: "actions/checkout",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v1",
+				ToVersion:   "v4",
+				Description: "Test rule",
+				Patches:     []FieldPatch{},
+			},
+		},
+	}
+	patcher.AddPatchRule(checkoutRule)
 
 	// Test that location migration patches are detected
 	if !patcher.HasPatchWithLocation("legacy-org/deprecated-action", "v1", "v2", "modern-org/recommended-action") {

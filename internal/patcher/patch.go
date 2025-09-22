@@ -99,14 +99,13 @@ type Patcher struct {
 	rules map[string]ActionPatchRule // repository -> rules
 }
 
-// NewPatcher creates a new patcher with default rules
+// NewPatcher creates a new patcher with no default rules
 func NewPatcher() *Patcher {
 	patcher := &Patcher{
 		rules: make(map[string]ActionPatchRule),
 	}
 
-	// Load default patch rules for common actions
-	patcher.loadDefaultRules()
+	// No default patch rules loaded - only custom rules can be added
 
 	return patcher
 }
