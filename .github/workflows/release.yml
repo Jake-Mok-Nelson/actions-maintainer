@@ -1,0 +1,194 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper tag calculation
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+
+      - name: Calculate next version
+        id: version
+        run: |
+          # Get the latest tag, default to v0.0.0 if no tags exist
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          
+          # Remove 'v' prefix for version calculation
+          CURRENT_VERSION=${LATEST_TAG#v}
+          
+          # Split version into major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          # Default to 0.1.0 if parsing fails (no previous tags)
+          if [[ -z "$MAJOR" ]] || [[ -z "$MINOR" ]] || [[ -z "$PATCH" ]]; then
+            MAJOR=0
+            MINOR=1
+            PATCH=0
+          fi
+          
+          # Increment based on input
+          case "${{ inputs.version_type }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          NEW_TAG="v$NEW_VERSION"
+          
+          echo "New version: $NEW_VERSION"
+          echo "New tag: $NEW_TAG"
+          
+          # Set outputs
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download dependencies
+        run: make deps
+
+      - name: Format code
+        run: make fmt
+
+      - name: Lint code
+        run: make lint
+
+      - name: Run tests
+        run: make test
+
+      - name: Build for all platforms
+        run: make build-all
+
+      - name: List build artifacts
+        run: |
+          echo "Build artifacts:"
+          ls -la bin/
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Generate release notes between previous tag and HEAD
+          PREVIOUS_TAG="${{ steps.version.outputs.previous_tag }}"
+          NEW_TAG="${{ steps.version.outputs.tag }}"
+          
+          if [[ "$PREVIOUS_TAG" == "v0.0.0" ]]; then
+            # First release - include all commits
+            RELEASE_NOTES="## What's Changed
+          
+          This is the initial release of actions-maintainer.
+          
+          ### Features
+          - 🔍 Repository scanning for GitHub Actions dependencies
+          - 📋 Workflow analysis and parsing
+          - ⚡ Version management and outdated action detection
+          - 🏗️ Action location migration support
+          - 📊 Detailed JSON reporting
+          - 🔧 Automated pull request creation for updates
+          
+          ### Installation
+          
+          Download the appropriate binary for your platform from the release assets below.
+          
+          ### Usage
+          
+          \`\`\`bash
+          ./actions-maintainer scan --owner <github-owner> --token <github-token>
+          \`\`\`
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/commits/$NEW_TAG"
+          else
+            # Generate notes from git log
+            RELEASE_NOTES="## What's Changed
+          
+          "
+            # Get commits since last tag
+            COMMITS=$(git log --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..HEAD --no-merges)
+            if [[ -n "$COMMITS" ]]; then
+              RELEASE_NOTES="${RELEASE_NOTES}### Commits
+          
+          $COMMITS
+          
+          "
+            fi
+            
+            RELEASE_NOTES="${RELEASE_NOTES}**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${NEW_TAG}"
+          fi
+          
+          # Save to file and output
+          echo "$RELEASE_NOTES" > release_notes.md
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: false
+          files: |
+            ./bin/actions-maintainer-linux-amd64
+            ./bin/actions-maintainer-darwin-amd64
+            ./bin/actions-maintainer-darwin-arm64
+            ./bin/actions-maintainer-windows-amd64.exe
+
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Successfully created release ${{ steps.version.outputs.tag }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous version**: ${{ steps.version.outputs.previous_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **New version**: ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version increment**: ${{ inputs.version_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release URL**: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Linux (amd64)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ macOS (Intel)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ macOS (Apple Silicon)" >> $GITHUB_STEP_SUMMARY  
+          echo "- ✅ Windows (amd64)" >> $GITHUB_STEP_SUMMARY

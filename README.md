@@ -283,6 +283,25 @@ For detailed guides and advanced usage:
 
 - **[Reusable Workflow Migration Guide](docs/reusable-workflow-migration-guide.md)** - Comprehensive guide for migrating reusable workflows from one repository to another
 
+## Releases
+
+This project uses automated releases through GitHub Actions. To create a new release:
+
+1. Go to the **Actions** tab in the GitHub repository
+2. Select the **Release** workflow
+3. Click **Run workflow**
+4. Choose the version increment type:
+   - **patch** - for bug fixes (e.g., 1.0.0 → 1.0.1)
+   - **minor** - for new features (e.g., 1.0.0 → 1.1.0)
+   - **major** - for breaking changes (e.g., 1.0.0 → 2.0.0)
+5. Click **Run workflow**
+
+The workflow will:
+- Calculate the next semantic version automatically
+- Run all tests and build binaries for multiple platforms
+- Create a Git tag and GitHub release
+- Upload pre-built binaries for Linux, macOS, and Windows
+
 ## Contributing
 
 1. Follow the KISS principle - keep it simple and readable
