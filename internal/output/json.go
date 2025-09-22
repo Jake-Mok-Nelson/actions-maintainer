@@ -22,12 +22,13 @@ type ScanResult struct {
 
 // RepositoryResult represents the scan result for a single repository
 type RepositoryResult struct {
-	Name          string                     `json:"name"`
-	FullName      string                     `json:"full_name"`
-	DefaultBranch string                     `json:"default_branch"`
-	WorkflowFiles []WorkflowFileResult       `json:"workflow_files"`
-	Actions       []workflow.ActionReference `json:"actions"`
-	Issues        []ActionIssue              `json:"issues,omitempty"`
+	Name             string                     `json:"name"`
+	FullName         string                     `json:"full_name"`
+	DefaultBranch    string                     `json:"default_branch"`
+	WorkflowFiles    []WorkflowFileResult       `json:"workflow_files"`
+	Actions          []workflow.ActionReference `json:"actions"`
+	Issues           []ActionIssue              `json:"issues,omitempty"`
+	CustomProperties map[string]string          `json:"custom_properties,omitempty"`
 }
 
 // WorkflowFileResult represents a workflow file scan result
