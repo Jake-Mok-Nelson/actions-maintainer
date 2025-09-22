@@ -248,9 +248,46 @@ func createRepositoryDetailsCell(result *ScanResult) NotebookCell {
 		}
 	}
 
+	// Check if any repositories have custom properties
+	hasCustomProperties := false
+	customPropertyKeys := make(map[string]bool)
+	for _, repo := range result.Repositories {
+		if len(repo.CustomProperties) > 0 {
+			hasCustomProperties = true
+			for key := range repo.CustomProperties {
+				customPropertyKeys[key] = true
+			}
+		}
+	}
+
+	// Create sorted list of custom property keys
+	var sortedPropertyKeys []string
+	for key := range customPropertyKeys {
+		sortedPropertyKeys = append(sortedPropertyKeys, key)
+	}
+	sort.Strings(sortedPropertyKeys)
+
+	// Add custom property filtering interface if properties exist
+	if hasCustomProperties {
+		source = append(source, createCustomPropertyFilterInterface(sortedPropertyKeys)...)
+	}
+
 	source = append(source, "### Repository Summary\n")
-	source = append(source, "| Repository | Workflows | Actions | Issues |\n")
-	source = append(source, "|------------|-----------|---------|--------|\n")
+
+	// Create table headers based on whether custom properties exist
+	if hasCustomProperties {
+		header := "| Repository | Workflows | Actions | Issues |"
+		separator := "|------------|-----------|---------|--------|"
+		for _, key := range sortedPropertyKeys {
+			header += fmt.Sprintf(" %s |", key)
+			separator += "--------|"
+		}
+		source = append(source, header+"\n")
+		source = append(source, separator+"\n")
+	} else {
+		source = append(source, "| Repository | Workflows | Actions | Issues |\n")
+		source = append(source, "|------------|-----------|---------|--------|\n")
+	}
 
 	for _, repo := range result.Repositories {
 		issueCount := len(repo.Issues)
@@ -259,8 +296,21 @@ func createRepositoryDetailsCell(result *ScanResult) NotebookCell {
 			issueDisplay = fmt.Sprintf("⚠️ %d", issueCount)
 		}
 
-		source = append(source, fmt.Sprintf("| [`%s`](https://github.com/%s) | %d | %d | %s |\n",
-			repo.Name, repo.FullName, len(repo.WorkflowFiles), len(repo.Actions), issueDisplay))
+		row := fmt.Sprintf("| [`%s`](https://github.com/%s) | %d | %d | %s |",
+			repo.Name, repo.FullName, len(repo.WorkflowFiles), len(repo.Actions), issueDisplay)
+
+		// Add custom property values to the row
+		if hasCustomProperties {
+			for _, key := range sortedPropertyKeys {
+				value := repo.CustomProperties[key]
+				if value == "" {
+					value = "-"
+				}
+				row += fmt.Sprintf(" %s |", value)
+			}
+		}
+
+		source = append(source, row+"\n")
 	}
 
 	source = append(source, "\n")
@@ -280,6 +330,17 @@ func createRepositoryDetailsCell(result *ScanResult) NotebookCell {
 		for _, repo := range reposWithIssues {
 			source = append(source, fmt.Sprintf("#### [`%s`](https://github.com/%s)\n", repo.Name, repo.FullName))
 			source = append(source, "\n")
+
+			// Add custom properties for this repository if they exist
+			if len(repo.CustomProperties) > 0 {
+				source = append(source, "**Custom Properties:**\n")
+				for _, key := range sortedPropertyKeys {
+					if value, exists := repo.CustomProperties[key]; exists && value != "" {
+						source = append(source, fmt.Sprintf("- %s: %s\n", key, value))
+					}
+				}
+				source = append(source, "\n")
+			}
 
 			// Group issues by file
 			fileIssues := make(map[string][]ActionIssue)
@@ -431,4 +492,186 @@ func createDetailedStatsCell(result *ScanResult) NotebookCell {
 		CellType: "markdown",
 		Source:   source,
 	}
+}
+
+// createCustomPropertyFilterInterface creates an interactive filtering interface for custom properties
+func createCustomPropertyFilterInterface(propertyKeys []string) []string {
+	var source []string
+
+	source = append(source, "### 🔍 Custom Property Filters\n")
+	source = append(source, "\n")
+	source = append(source, "Use the dropdown filters below to filter repositories by custom properties:\n")
+	source = append(source, "\n")
+
+	// Create HTML-based filter interface that works in Jupyter notebooks
+	source = append(source, "<div style='background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;'>\n")
+	source = append(source, "<h4>Property Filters</h4>\n")
+
+	for _, key := range propertyKeys {
+		source = append(source, fmt.Sprintf(`
+<div style='margin: 5px 0;'>
+<label for='filter_%s' style='font-weight: bold; margin-right: 10px;'>%s:</label>
+<select id='filter_%s' onchange='filterRepositories()' style='padding: 5px; margin-right: 10px;'>
+<option value=''>All</option>
+</select>
+<button onclick='clearFilter("%s")' style='padding: 3px 8px; font-size: 12px;'>Clear</button>
+</div>
+`, key, key, key, key))
+	}
+
+	source = append(source, `
+<div style='margin-top: 10px;'>
+<button onclick='clearAllFilters()' style='background-color: #dc3545; color: white; padding: 8px 16px; border: none; border-radius: 3px; cursor: pointer;'>Clear All Filters</button>
+<span id='filterStatus' style='margin-left: 15px; font-weight: bold;'></span>
+</div>
+</div>
+
+<script>
+// Repository filtering functionality
+let allRepositories = [];
+let filteredRepositories = [];
+
+// Initialize filters with data from the table
+function initializeFilters() {
+    // Get all table rows (skip header)
+    const table = document.querySelector('table');
+    if (!table) return;
+    
+    const rows = table.querySelectorAll('tr');
+    const headerRow = rows[0];
+    const dataRows = Array.from(rows).slice(1);
+    
+    // Parse header to find column indices for custom properties
+    const headers = Array.from(headerRow.querySelectorAll('th, td')).map(th => th.textContent.trim());
+    const propertyIndices = {};
+`)
+
+	for i, key := range propertyKeys {
+		source = append(source, fmt.Sprintf("    propertyIndices['%s'] = %d; // Column index for %s\n", key, 4+i, key))
+	}
+
+	source = append(source, `
+    
+    // Extract repository data
+    allRepositories = dataRows.map(row => {
+        const cells = row.querySelectorAll('td');
+        const repo = {
+            element: row,
+            name: cells[0] ? cells[0].textContent.trim() : '',
+            properties: {}
+        };
+        
+        // Extract custom property values
+`)
+
+	for _, key := range propertyKeys {
+		source = append(source, fmt.Sprintf(`        if (propertyIndices['%s'] && cells[propertyIndices['%s']]) {
+            repo.properties['%s'] = cells[propertyIndices['%s']].textContent.trim();
+        }
+`, key, key, key, key))
+	}
+
+	source = append(source, `        return repo;
+    });
+    
+    // Populate filter dropdowns with unique values
+`)
+
+	for _, key := range propertyKeys {
+		source = append(source, fmt.Sprintf(`    populateFilterDropdown('%s');
+`, key))
+	}
+
+	source = append(source, `}
+
+function populateFilterDropdown(propertyKey) {
+    const select = document.getElementById('filter_' + propertyKey);
+    if (!select) return;
+    
+    // Get unique values for this property
+    const values = new Set();
+    allRepositories.forEach(repo => {
+        const value = repo.properties[propertyKey];
+        if (value && value !== '-') {
+            values.add(value);
+        }
+    });
+    
+    // Clear existing options except "All"
+    select.innerHTML = '<option value="">All</option>';
+    
+    // Add unique values as options
+    Array.from(values).sort().forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+    });
+}
+
+function filterRepositories() {
+    const filters = {};
+`)
+
+	for _, key := range propertyKeys {
+		source = append(source, fmt.Sprintf(`    filters['%s'] = document.getElementById('filter_%s').value;
+`, key, key))
+	}
+
+	source = append(source, `    
+    // Apply filters
+    filteredRepositories = allRepositories.filter(repo => {
+        for (const [key, filterValue] of Object.entries(filters)) {
+            if (filterValue && repo.properties[key] !== filterValue) {
+                return false;
+            }
+        }
+        return true;
+    });
+    
+    // Show/hide repository rows
+    allRepositories.forEach(repo => {
+        const isVisible = filteredRepositories.includes(repo);
+        repo.element.style.display = isVisible ? '' : 'none';
+    });
+    
+    // Update status
+    updateFilterStatus();
+}
+
+function clearFilter(propertyKey) {
+    document.getElementById('filter_' + propertyKey).value = '';
+    filterRepositories();
+}
+
+function clearAllFilters() {
+`)
+
+	for _, key := range propertyKeys {
+		source = append(source, fmt.Sprintf(`    document.getElementById('filter_%s').value = '';
+`, key))
+	}
+
+	source = append(source, `    filterRepositories();
+}
+
+function updateFilterStatus() {
+    const statusElement = document.getElementById('filterStatus');
+    if (filteredRepositories.length === allRepositories.length) {
+        statusElement.textContent = 'Showing all repositories';
+        statusElement.style.color = '#28a745';
+    } else {
+        statusElement.textContent = 'Showing ' + filteredRepositories.length + ' of ' + allRepositories.length + ' repositories';
+        statusElement.style.color = '#007bff';
+    }
+}
+
+// Initialize filters when the page loads
+setTimeout(initializeFilters, 100);
+</script>
+
+`)
+
+	source = append(source, "\n")
+	return source
 }

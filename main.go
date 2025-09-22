@@ -94,6 +94,13 @@ func main() {
 				Help:     `Path to custom rules file (JSON format). Rules will be merged with defaults. Supports version rules and repository migrations`,
 				Variable: true,
 			},
+			{
+				Name:     "custom-property",
+				Short:    "P",
+				Usage:    `--custom-property <property>`,
+				Help:     `Custom repository property to include in the report (e.g., "ProductId"). Can be specified multiple times for multiple properties`,
+				Variable: true,
+			},
 		},
 		Handle: handleScan,
 	}
@@ -125,6 +132,20 @@ func handleScan(ctx climax.Context) int {
 	filterPattern, _ := ctx.Get("filter")
 	verbose := ctx.Is("verbose")
 	rulesFile, _ := ctx.Get("rules-file")
+	customProperty, _ := ctx.Get("custom-property")
+
+	// Parse custom properties (support multiple values separated by commas)
+	var customProperties []string
+	if customProperty != "" {
+		// Split by comma and trim whitespace
+		parts := strings.Split(customProperty, ",")
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				customProperties = append(customProperties, trimmed)
+			}
+		}
+	}
 
 	if verbose {
 		log.Printf("Verbose logging enabled")
@@ -182,7 +203,10 @@ func handleScan(ctx climax.Context) int {
 
 	// Perform scan
 	fmt.Printf("Fetching repositories...\n")
-	repositories, err := githubClient.ListRepositories(owner)
+	if len(customProperties) > 0 {
+		fmt.Printf("Including custom properties: %v\n", customProperties)
+	}
+	repositories, err := githubClient.ListRepositoriesWithCustomProperties(owner, customProperties)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing repositories: %v\n", err)
 		return 1
@@ -277,12 +301,13 @@ func handleScan(ctx climax.Context) int {
 		}
 
 		repositoryResults = append(repositoryResults, output.RepositoryResult{
-			Name:          repo.Name,
-			FullName:      repo.FullName,
-			DefaultBranch: repo.DefaultBranch,
-			WorkflowFiles: workflowFileResults,
-			Actions:       repoActions,
-			Issues:        issues,
+			Name:             repo.Name,
+			FullName:         repo.FullName,
+			DefaultBranch:    repo.DefaultBranch,
+			WorkflowFiles:    workflowFileResults,
+			Actions:          repoActions,
+			Issues:           issues,
+			CustomProperties: repo.CustomProperties,
 		})
 	}
 

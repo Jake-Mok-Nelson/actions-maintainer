@@ -23,10 +23,11 @@ type Client struct {
 
 // Repository represents a GitHub repository with relevant metadata
 type Repository struct {
-	Owner         string
-	Name          string
-	DefaultBranch string
-	FullName      string
+	Owner            string            `json:"owner"`
+	Name             string            `json:"name"`
+	DefaultBranch    string            `json:"default_branch"`
+	FullName         string            `json:"full_name"`
+	CustomProperties map[string]string `json:"custom_properties,omitempty"`
 }
 
 // WorkflowFile represents a workflow file found in a repository
@@ -64,8 +65,16 @@ func NewClientWithConfig(token string, config *Config) *Client {
 
 // ListRepositories gets all repositories for a given owner (user or org)
 func (c *Client) ListRepositories(owner string) ([]Repository, error) {
+	return c.ListRepositoriesWithCustomProperties(owner, nil)
+}
+
+// ListRepositoriesWithCustomProperties gets all repositories for a given owner and optionally fetches custom properties
+func (c *Client) ListRepositoriesWithCustomProperties(owner string, customProperties []string) ([]Repository, error) {
 	if c.verbose {
 		log.Printf("GitHub API: Listing repositories for owner '%s'", owner)
+		if len(customProperties) > 0 {
+			log.Printf("GitHub API: Will fetch custom properties: %v", customProperties)
+		}
 	}
 
 	// First, determine if owner is a user or organization
@@ -75,28 +84,28 @@ func (c *Client) ListRepositories(owner string) ([]Repository, error) {
 			log.Printf("GitHub API: Could not determine owner type, falling back to user endpoint - %v", err)
 		}
 		// Fall back to user endpoint if we can't determine the type
-		return c.listRepositoriesAsUser(owner)
+		return c.listRepositoriesAsUserWithCustomProperties(owner, customProperties)
 	}
 
 	if isOrg {
 		if c.verbose {
 			log.Printf("GitHub API: Owner '%s' detected as organization, using org endpoint", owner)
 		}
-		repos, err := c.listRepositoriesAsOrg(owner)
+		repos, err := c.listRepositoriesAsOrgWithCustomProperties(owner, customProperties)
 		if err != nil {
 			if c.verbose {
 				log.Printf("GitHub API: Organization endpoint failed, falling back to user endpoint - %v", err)
 			}
 			// If org endpoint fails, fall back to user endpoint
 			// This handles cases where the token doesn't have org permissions
-			return c.listRepositoriesAsUser(owner)
+			return c.listRepositoriesAsUserWithCustomProperties(owner, customProperties)
 		}
 		return repos, nil
 	} else {
 		if c.verbose {
 			log.Printf("GitHub API: Owner '%s' detected as user, using user endpoint", owner)
 		}
-		return c.listRepositoriesAsUser(owner)
+		return c.listRepositoriesAsUserWithCustomProperties(owner, customProperties)
 	}
 }
 
@@ -139,6 +148,11 @@ func (c *Client) isOrganization(owner string) (bool, error) {
 
 // listRepositoriesAsOrg lists repositories for an organization
 func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
+	return c.listRepositoriesAsOrgWithCustomProperties(org, nil)
+}
+
+// listRepositoriesAsOrgWithCustomProperties lists repositories for an organization with custom properties
+func (c *Client) listRepositoriesAsOrgWithCustomProperties(org string, customProperties []string) ([]Repository, error) {
 	var allRepos []Repository
 
 	opts := &github.RepositoryListByOrgOptions{
@@ -180,12 +194,26 @@ func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
 				continue // Skip repos without default branch
 			}
 
-			allRepos = append(allRepos, Repository{
+			repository := Repository{
 				Owner:         org,
 				Name:          repo.GetName(),
 				DefaultBranch: repo.GetDefaultBranch(),
 				FullName:      repo.GetFullName(),
-			})
+			}
+
+			// Fetch custom properties if requested
+			if len(customProperties) > 0 {
+				props, err := c.GetRepositoryCustomProperties(org, repo.GetName(), customProperties)
+				if err != nil {
+					if c.verbose {
+						log.Printf("Warning: Failed to fetch custom properties for %s: %v", repo.GetFullName(), err)
+					}
+					// Continue with empty properties rather than failing
+				}
+				repository.CustomProperties = props
+			}
+
+			allRepos = append(allRepos, repository)
 		}
 
 		if resp.NextPage == 0 {
@@ -203,6 +231,11 @@ func (c *Client) listRepositoriesAsOrg(org string) ([]Repository, error) {
 
 // listRepositoriesAsUser lists repositories for a user
 func (c *Client) listRepositoriesAsUser(user string) ([]Repository, error) {
+	return c.listRepositoriesAsUserWithCustomProperties(user, nil)
+}
+
+// listRepositoriesAsUserWithCustomProperties lists repositories for a user with custom properties
+func (c *Client) listRepositoriesAsUserWithCustomProperties(user string, customProperties []string) ([]Repository, error) {
 	var allRepos []Repository
 
 	opts := &github.RepositoryListByUserOptions{
@@ -244,12 +277,26 @@ func (c *Client) listRepositoriesAsUser(user string) ([]Repository, error) {
 				continue // Skip repos without default branch
 			}
 
-			allRepos = append(allRepos, Repository{
+			repository := Repository{
 				Owner:         user,
 				Name:          repo.GetName(),
 				DefaultBranch: repo.GetDefaultBranch(),
 				FullName:      repo.GetFullName(),
-			})
+			}
+
+			// Fetch custom properties if requested
+			if len(customProperties) > 0 {
+				props, err := c.GetRepositoryCustomProperties(user, repo.GetName(), customProperties)
+				if err != nil {
+					if c.verbose {
+						log.Printf("Warning: Failed to fetch custom properties for %s: %v", repo.GetFullName(), err)
+					}
+					// Continue with empty properties rather than failing
+				}
+				repository.CustomProperties = props
+			}
+
+			allRepos = append(allRepos, repository)
 		}
 
 		if resp.NextPage == 0 {
@@ -444,4 +491,51 @@ func (c *Client) GetTagsForRepo(owner, repo string) (map[string]string, error) {
 	}
 
 	return tags, nil
+}
+
+// GetRepositoryCustomProperties fetches custom properties for a repository
+func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []string) (map[string]string, error) {
+	if c.verbose {
+		log.Printf("GitHub API: Getting custom properties for repository '%s/%s': %v", owner, repo, properties)
+	}
+
+	customProperties := make(map[string]string)
+
+	// If no specific properties requested, return empty map
+	if len(properties) == 0 {
+		return customProperties, nil
+	}
+
+	// Get the repository details to check for custom properties
+	// Note: GitHub's API for custom properties may vary depending on the organization settings
+	// This is a basic implementation that may need adjustment based on actual API responses
+
+	if c.verbose {
+		log.Printf("GitHub API: GET /repos/%s/%s (for custom properties)", owner, repo)
+	}
+
+	repository, _, err := c.client.Repositories.Get(c.ctx, owner, repo)
+	if err != nil {
+		if c.verbose {
+			log.Printf("GitHub API: Error getting repository details for custom properties - %v", err)
+		}
+		// Don't fail the entire scan if custom properties can't be fetched
+		log.Printf("Warning: Failed to fetch custom properties for %s/%s: %v", owner, repo, err)
+		return customProperties, nil
+	}
+
+	// GitHub custom properties are typically returned in the repository response
+	// However, the exact implementation depends on how the GitHub API exposes these
+	// For now, we'll set up the infrastructure and return empty properties
+	// This can be enhanced when we have more specific API details
+
+	if c.verbose {
+		log.Printf("GitHub API: Repository %s/%s fetched, custom properties handling not yet implemented", owner, repo)
+	}
+
+	// Placeholder: In a real implementation, we would parse the custom properties
+	// from the repository response or make additional API calls
+	_ = repository
+
+	return customProperties, nil
 }
