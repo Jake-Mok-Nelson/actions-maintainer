@@ -3,6 +3,8 @@ package output
 import (
 	"fmt"
 	"testing"
+
+	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
 // TestSelectTopIssues_GroupsByWorkflowFile tests that issues are grouped by workflow file
@@ -291,5 +293,140 @@ func TestIsHigherSeverity(t *testing.T) {
 			t.Errorf("isHigherSeverity(%s, %s) = %v, expected %v",
 				tc.severity1, tc.severity2, result, tc.expected)
 		}
+	}
+}
+
+// TestCalculateSummary_ActionsAndWorkflowsBreakdown tests the enhanced summary with actions/workflows breakdown
+func TestCalculateSummary_ActionsAndWorkflowsBreakdown(t *testing.T) {
+	// Mock repository results with both actions and workflows
+	repositories := []RepositoryResult{
+		{
+			Name:     "repo1",
+			FullName: "org/repo1",
+			WorkflowFiles: []WorkflowFileResult{
+				{
+					Path:        ".github/workflows/ci.yml",
+					ActionCount: 3,
+					Actions: []workflow.ActionReference{
+						{Repository: "actions/checkout", Version: "v3", IsReusable: false},
+						{Repository: "actions/setup-node", Version: "v2", IsReusable: false},
+						{Repository: "org/shared-workflows", Version: "v1", IsReusable: true, WorkflowPath: ".github/workflows/test.yml"},
+					},
+				},
+			},
+			Actions: []workflow.ActionReference{
+				{Repository: "actions/checkout", Version: "v3", IsReusable: false},
+				{Repository: "actions/setup-node", Version: "v2", IsReusable: false},
+				{Repository: "org/shared-workflows", Version: "v1", IsReusable: true, WorkflowPath: ".github/workflows/test.yml"},
+			},
+			Issues: []ActionIssue{
+				{Repository: "actions/checkout", IssueType: "outdated", Severity: "low"},
+				{Repository: "actions/setup-node", IssueType: "outdated", Severity: "high"},
+			},
+		},
+		{
+			Name:     "repo2",
+			FullName: "org/repo2",
+			WorkflowFiles: []WorkflowFileResult{
+				{
+					Path:        ".github/workflows/deploy.yml",
+					ActionCount: 2,
+					Actions: []workflow.ActionReference{
+						{Repository: "actions/checkout", Version: "v4", IsReusable: false},
+						{Repository: "org/deploy-workflows", Version: "v2", IsReusable: true, WorkflowPath: ".github/workflows/deploy.yml"},
+					},
+				},
+			},
+			Actions: []workflow.ActionReference{
+				{Repository: "actions/checkout", Version: "v4", IsReusable: false},
+				{Repository: "org/deploy-workflows", Version: "v2", IsReusable: true, WorkflowPath: ".github/workflows/deploy.yml"},
+			},
+			Issues: []ActionIssue{},
+		},
+	}
+
+	summary := calculateSummary(repositories)
+
+	// Test basic counts
+	if summary.TotalRepositories != 2 {
+		t.Errorf("Expected 2 repositories, got %d", summary.TotalRepositories)
+	}
+	if summary.TotalWorkflowFiles != 2 {
+		t.Errorf("Expected 2 workflow files, got %d", summary.TotalWorkflowFiles)
+	}
+	if summary.TotalActions != 5 {
+		t.Errorf("Expected 5 total actions, got %d", summary.TotalActions)
+	}
+	if summary.TotalRegularActions != 3 {
+		t.Errorf("Expected 3 regular actions, got %d", summary.TotalRegularActions)
+	}
+	if summary.TotalReusableWorkflows != 2 {
+		t.Errorf("Expected 2 reusable workflows, got %d", summary.TotalReusableWorkflows)
+	}
+
+	// Test unique action counts
+	if len(summary.UniqueActions) != 4 {
+		t.Errorf("Expected 4 unique actions total, got %d", len(summary.UniqueActions))
+	}
+	if len(summary.UniqueRegularActions) != 2 {
+		t.Errorf("Expected 2 unique regular actions, got %d", len(summary.UniqueRegularActions))
+	}
+	if len(summary.UniqueReusableWorkflows) != 2 {
+		t.Errorf("Expected 2 unique reusable workflows, got %d", len(summary.UniqueReusableWorkflows))
+	}
+
+	// Test that actions are properly categorized
+	checkoutStat, exists := summary.UniqueRegularActions["actions/checkout"]
+	if !exists {
+		t.Error("actions/checkout should be in UniqueRegularActions")
+	} else if checkoutStat.IsReusableWorkflow {
+		t.Error("actions/checkout should not be marked as reusable workflow")
+	}
+
+	sharedWorkflowStat, exists := summary.UniqueReusableWorkflows["org/shared-workflows"]
+	if !exists {
+		t.Error("org/shared-workflows should be in UniqueReusableWorkflows")
+	} else if !sharedWorkflowStat.IsReusableWorkflow {
+		t.Error("org/shared-workflows should be marked as reusable workflow")
+	}
+
+	// Test checkout usage across repositories (should appear in both)
+	if checkoutStat.UsageCount != 2 {
+		t.Errorf("actions/checkout should have usage count 2, got %d", checkoutStat.UsageCount)
+	}
+	if len(checkoutStat.Repositories) != 2 {
+		t.Errorf("actions/checkout should be used in 2 repositories, got %d", len(checkoutStat.Repositories))
+	}
+	if len(checkoutStat.Versions) != 2 {
+		t.Errorf("actions/checkout should have 2 different versions, got %d", len(checkoutStat.Versions))
+	}
+
+	// Test issue counts
+	if summary.IssuesByType["outdated"] != 2 {
+		t.Errorf("Expected 2 outdated issues, got %d", summary.IssuesByType["outdated"])
+	}
+	if summary.IssuesBySeverity["low"] != 1 {
+		t.Errorf("Expected 1 low severity issue, got %d", summary.IssuesBySeverity["low"])
+	}
+	if summary.IssuesBySeverity["high"] != 1 {
+		t.Errorf("Expected 1 high severity issue, got %d", summary.IssuesBySeverity["high"])
+	}
+
+	t.Log("=== Enhanced Summary Statistics ===")
+	t.Logf("Total Actions: %d", summary.TotalActions)
+	t.Logf("  - Regular Actions: %d", summary.TotalRegularActions)
+	t.Logf("  - Reusable Workflows: %d", summary.TotalReusableWorkflows)
+	t.Logf("Unique Actions: %d", len(summary.UniqueActions))
+	t.Logf("  - Unique Regular Actions: %d", len(summary.UniqueRegularActions))
+	t.Logf("  - Unique Reusable Workflows: %d", len(summary.UniqueReusableWorkflows))
+
+	t.Log("\n=== Regular Actions ===")
+	for name, stat := range summary.UniqueRegularActions {
+		t.Logf("%s: %d uses, %d versions, %d repos", name, stat.UsageCount, len(stat.Versions), len(stat.Repositories))
+	}
+
+	t.Log("\n=== Reusable Workflows ===")
+	for name, stat := range summary.UniqueReusableWorkflows {
+		t.Logf("%s: %d uses, %d versions, %d repos", name, stat.UsageCount, len(stat.Versions), len(stat.Repositories))
 	}
 }

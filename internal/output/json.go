@@ -57,13 +57,17 @@ type ActionIssue struct {
 
 // Summary provides aggregate statistics about the scan
 type Summary struct {
-	TotalRepositories  int                        `json:"total_repositories"`
-	TotalWorkflowFiles int                        `json:"total_workflow_files"`
-	TotalActions       int                        `json:"total_actions"`
-	UniqueActions      map[string]ActionUsageStat `json:"unique_actions"`
-	IssuesByType       map[string]int             `json:"issues_by_type"`
-	IssuesBySeverity   map[string]int             `json:"issues_by_severity"`
-	TopIssues          []ActionIssue              `json:"top_issues"`
+	TotalRepositories     int                        `json:"total_repositories"`
+	TotalWorkflowFiles    int                        `json:"total_workflow_files"`
+	TotalActions          int                        `json:"total_actions"`           // Total of both actions and workflows
+	TotalRegularActions   int                        `json:"total_regular_actions"`   // Only regular GitHub Actions
+	TotalReusableWorkflows int                       `json:"total_reusable_workflows"` // Only reusable workflows
+	UniqueActions         map[string]ActionUsageStat `json:"unique_actions"`         // Combined actions and workflows
+	UniqueRegularActions  map[string]ActionUsageStat `json:"unique_regular_actions"` // Only regular actions
+	UniqueReusableWorkflows map[string]ActionUsageStat `json:"unique_reusable_workflows"` // Only reusable workflows
+	IssuesByType          map[string]int             `json:"issues_by_type"`
+	IssuesBySeverity      map[string]int             `json:"issues_by_severity"`
+	TopIssues             []ActionIssue              `json:"top_issues"`
 }
 
 // ActionUsageStat represents usage statistics for a specific action
@@ -72,6 +76,7 @@ type ActionUsageStat struct {
 	UsageCount   int            `json:"usage_count"`
 	Versions     map[string]int `json:"versions"`
 	Repositories []string       `json:"repositories"`
+	IsReusableWorkflow bool     `json:"is_reusable_workflow"` // true if this represents a reusable workflow
 }
 
 // CreatedPR represents a pull request that was created during the scan
@@ -138,13 +143,17 @@ func AddCreatedPR(result *ScanResult, pr CreatedPR) {
 // calculateSummary generates summary statistics from repository results
 func calculateSummary(repositories []RepositoryResult) Summary {
 	summary := Summary{
-		UniqueActions:    make(map[string]ActionUsageStat),
-		IssuesByType:     make(map[string]int),
-		IssuesBySeverity: make(map[string]int),
+		UniqueActions:           make(map[string]ActionUsageStat),
+		UniqueRegularActions:    make(map[string]ActionUsageStat),
+		UniqueReusableWorkflows: make(map[string]ActionUsageStat),
+		IssuesByType:            make(map[string]int),
+		IssuesBySeverity:        make(map[string]int),
 	}
 
 	totalWorkflowFiles := 0
 	totalActions := 0
+	totalRegularActions := 0
+	totalReusableWorkflows := 0
 	var allIssues []ActionIssue
 
 	// Process each repository
@@ -156,13 +165,20 @@ func calculateSummary(repositories []RepositoryResult) Summary {
 		for _, action := range repo.Actions {
 			totalActions++
 
-			// Update unique actions statistics
+			if action.IsReusable {
+				totalReusableWorkflows++
+			} else {
+				totalRegularActions++
+			}
+
+			// Update combined unique actions statistics
 			stat, exists := summary.UniqueActions[action.Repository]
 			if !exists {
 				stat = ActionUsageStat{
-					Repository:   action.Repository,
-					Versions:     make(map[string]int),
-					Repositories: make([]string, 0),
+					Repository:         action.Repository,
+					Versions:           make(map[string]int),
+					Repositories:       make([]string, 0),
+					IsReusableWorkflow: action.IsReusable,
 				}
 			}
 
@@ -182,6 +198,41 @@ func calculateSummary(repositories []RepositoryResult) Summary {
 			}
 
 			summary.UniqueActions[action.Repository] = stat
+
+			// Update type-specific statistics
+			var typeSpecificMap map[string]ActionUsageStat
+			if action.IsReusable {
+				typeSpecificMap = summary.UniqueReusableWorkflows
+			} else {
+				typeSpecificMap = summary.UniqueRegularActions
+			}
+
+			typeStat, exists := typeSpecificMap[action.Repository]
+			if !exists {
+				typeStat = ActionUsageStat{
+					Repository:         action.Repository,
+					Versions:           make(map[string]int),
+					Repositories:       make([]string, 0),
+					IsReusableWorkflow: action.IsReusable,
+				}
+			}
+
+			typeStat.UsageCount++
+			typeStat.Versions[action.Version]++
+
+			// Add repository to list if not already present
+			found = false
+			for _, repoName := range typeStat.Repositories {
+				if repoName == repo.FullName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				typeStat.Repositories = append(typeStat.Repositories, repo.FullName)
+			}
+
+			typeSpecificMap[action.Repository] = typeStat
 		}
 
 		// Process issues
@@ -194,6 +245,8 @@ func calculateSummary(repositories []RepositoryResult) Summary {
 
 	summary.TotalWorkflowFiles = totalWorkflowFiles
 	summary.TotalActions = totalActions
+	summary.TotalRegularActions = totalRegularActions
+	summary.TotalReusableWorkflows = totalReusableWorkflows
 
 	// Select top issues (limit to 10)
 	summary.TopIssues = selectTopIssues(allIssues, 10)
