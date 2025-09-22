@@ -36,6 +36,7 @@ go.work.sum
 
 # Binary outputs
 actions-maintainer
+bin/
 
 # Cache database
 *.db
