@@ -373,7 +373,11 @@ func handleScan(ctx climax.Context) int {
 	fmt.Printf("- Repositories scanned: %d\n", scanResult.Summary.TotalRepositories)
 	fmt.Printf("- Workflow files found: %d\n", scanResult.Summary.TotalWorkflowFiles)
 	fmt.Printf("- Actions analyzed: %d\n", scanResult.Summary.TotalActions)
+	fmt.Printf("  - Regular actions: %d\n", scanResult.Summary.TotalRegularActions)
+	fmt.Printf("  - Reusable workflows: %d\n", scanResult.Summary.TotalReusableWorkflows)
 	fmt.Printf("- Unique actions: %d\n", len(scanResult.Summary.UniqueActions))
+	fmt.Printf("  - Unique regular actions: %d\n", len(scanResult.Summary.UniqueRegularActions))
+	fmt.Printf("  - Unique reusable workflows: %d\n", len(scanResult.Summary.UniqueReusableWorkflows))
 
 	totalIssues := 0
 	for _, count := range scanResult.Summary.IssuesByType {
