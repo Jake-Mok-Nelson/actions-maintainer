@@ -521,8 +521,7 @@ func TestNewManagerWithResolverConfigAndRules(t *testing.T) {
 	}
 
 	config := &Config{
-		Verbose:      false,
-		WorkflowOnly: false,
+		Verbose: false,
 	}
 
 	manager := NewManagerWithResolverConfigAndRules(nil, config, customRules)
@@ -558,8 +557,7 @@ func TestAnalyzeActions_WithCustomRules(t *testing.T) {
 	}
 
 	config := &Config{
-		Verbose:      false,
-		WorkflowOnly: false,
+		Verbose: false,
 	}
 
 	manager := NewManagerWithResolverConfigAndRules(nil, config, customRules)
@@ -735,8 +733,7 @@ func TestAnalyzeActions_WithPathSpecificRules(t *testing.T) {
 	}
 
 	config := &Config{
-		Verbose:      false, // Disable verbose for normal test execution
-		WorkflowOnly: false,
+		Verbose: false, // Disable verbose for normal test execution
 	}
 
 	manager := NewManagerWithResolverConfigAndRules(nil, config, customRules)

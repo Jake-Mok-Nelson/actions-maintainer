@@ -12,17 +12,15 @@ import (
 
 // Config holds configuration options for the actions manager
 type Config struct {
-	Verbose      bool
-	WorkflowOnly bool // Only analyze reusable workflows, exclude regular actions
+	Verbose bool
 }
 
 // Manager handles action version management and issue detection
 type Manager struct {
-	rules        []Rule
-	patcher      *patcher.WorkflowPatcher
-	resolver     VersionResolver // Interface for version resolution
-	verbose      bool
-	workflowOnly bool // Only analyze reusable workflows, exclude regular actions
+	rules    []Rule
+	patcher  *patcher.WorkflowPatcher
+	resolver VersionResolver // Interface for version resolution
+	verbose  bool
 }
 
 // VersionResolver interface for resolving version aliases
@@ -52,71 +50,61 @@ type Rule struct {
 // NewManager creates a new actions manager with default rules
 func NewManager() *Manager {
 	return &Manager{
-		rules:        getDefaultRules(),
-		patcher:      patcher.NewWorkflowPatcher(),
-		verbose:      false,
-		workflowOnly: false,
+		rules:   getDefaultRules(),
+		patcher: patcher.NewWorkflowPatcher(),
+		verbose: false,
 	}
 }
 
 // NewManagerWithResolver creates a new actions manager with a version resolver
 func NewManagerWithResolver(resolver VersionResolver) *Manager {
 	return &Manager{
-		rules:        getDefaultRules(),
-		patcher:      patcher.NewWorkflowPatcher(),
-		resolver:     resolver,
-		verbose:      false,
-		workflowOnly: false,
+		rules:    getDefaultRules(),
+		patcher:  patcher.NewWorkflowPatcher(),
+		resolver: resolver,
+		verbose:  false,
 	}
 }
 
 // NewManagerWithConfig creates a new actions manager with configuration
 func NewManagerWithConfig(config *Config) *Manager {
 	if config == nil {
-		config = &Config{Verbose: false, WorkflowOnly: false}
+		config = &Config{Verbose: false}
 	}
 
 	if config.Verbose {
 		log.Printf("Actions manager initialized with verbose logging enabled")
-		if config.WorkflowOnly {
-			log.Printf("Actions manager configured for workflow-only mode")
-		}
 	}
 
 	return &Manager{
-		rules:        getDefaultRules(),
-		patcher:      patcher.NewWorkflowPatcher(),
-		verbose:      config.Verbose,
-		workflowOnly: config.WorkflowOnly,
+		rules:   getDefaultRules(),
+		patcher: patcher.NewWorkflowPatcher(),
+		verbose: config.Verbose,
 	}
 }
 
 // NewManagerWithResolverAndConfig creates a new actions manager with a version resolver and configuration
 func NewManagerWithResolverAndConfig(resolver VersionResolver, config *Config) *Manager {
 	if config == nil {
-		config = &Config{Verbose: false, WorkflowOnly: false}
+		config = &Config{Verbose: false}
 	}
 
 	if config.Verbose {
 		log.Printf("Actions manager initialized with version resolver and verbose logging enabled")
-		if config.WorkflowOnly {
-			log.Printf("Actions manager configured for workflow-only mode")
-		}
 	}
 
 	return &Manager{
-		rules:        getDefaultRules(),
-		patcher:      patcher.NewWorkflowPatcher(),
-		resolver:     resolver,
-		verbose:      config.Verbose,
-		workflowOnly: config.WorkflowOnly,
+		rules:    getDefaultRules(),
+		patcher:  patcher.NewWorkflowPatcher(),
+		resolver: resolver,
+		verbose:  config.Verbose,
 	}
 }
 
 // NewManagerWithResolverConfigAndRules creates a new actions manager with a version resolver, configuration, and custom rules
 func NewManagerWithResolverConfigAndRules(resolver VersionResolver, config *Config, customRules []Rule) *Manager {
 	if config == nil {
-		config = &Config{Verbose: false, WorkflowOnly: false}
+		config = &Config{Verbose: false}
 	}
 
 	// Merge custom rules with default rules
@@ -125,17 +113,13 @@ func NewManagerWithResolverConfigAndRules(resolver VersionResolver, config *Conf
 	if config.Verbose {
 		log.Printf("Actions manager initialized with version resolver, custom rules, and verbose logging enabled")
 		log.Printf("Using %d rules (%d default + %d custom)", len(rules), len(getDefaultRules()), len(customRules))
-		if config.WorkflowOnly {
-			log.Printf("Actions manager configured for workflow-only mode")
-		}
 	}
 
 	return &Manager{
-		rules:        rules,
-		patcher:      patcher.NewWorkflowPatcher(),
-		resolver:     resolver,
-		verbose:      config.Verbose,
-		workflowOnly: config.WorkflowOnly,
+		rules:    rules,
+		patcher:  patcher.NewWorkflowPatcher(),
+		resolver: resolver,
+		verbose:  config.Verbose,
 	}
 }
 
@@ -143,36 +127,17 @@ func NewManagerWithResolverConfigAndRules(resolver VersionResolver, config *Conf
 func (m *Manager) AnalyzeActions(actions []workflow.ActionReference) []output.ActionIssue {
 	if m.verbose {
 		log.Printf("Rule evaluation: Starting analysis of %d action references", len(actions))
-		if m.workflowOnly {
-			log.Printf("Rule evaluation: Workflow-only mode enabled - filtering to reusable workflows only")
-		}
-	}
-
-	// Filter actions if workflow-only mode is enabled
-	filteredActions := actions
-	if m.workflowOnly {
-		filteredActions = []workflow.ActionReference{}
-		for _, action := range actions {
-			if action.IsReusable {
-				filteredActions = append(filteredActions, action)
-			} else if m.verbose {
-				log.Printf("Rule evaluation: Skipping non-reusable action %s@%s due to workflow-only mode", action.Repository, action.Version)
-			}
-		}
-		if m.verbose {
-			log.Printf("Rule evaluation: Filtered to %d reusable workflows from %d total actions", len(filteredActions), len(actions))
-		}
 	}
 
 	var issues []output.ActionIssue
 
-	for i, action := range filteredActions {
+	for i, action := range actions {
 		if m.verbose {
 			actionType := "action"
 			if action.IsReusable {
 				actionType = "reusable workflow"
 			}
-			log.Printf("Rule evaluation: Analyzing %s %d/%d - %s@%s (context: %s)", actionType, i+1, len(filteredActions), action.Repository, action.Version, action.Context)
+			log.Printf("Rule evaluation: Analyzing %s %d/%d - %s@%s (context: %s)", actionType, i+1, len(actions), action.Repository, action.Version, action.Context)
 		}
 
 		actionIssues := m.analyzeAction(action)
