@@ -80,18 +80,34 @@ func (m *MockVersionResolver) SetVersionOutdated(repository, currentVersion, lat
 }
 
 func TestManager_AnalyzeActions_WithoutResolver(t *testing.T) {
-	manager := NewManager()
+	// Provide custom rules since default rules are no longer used
+	customRules := []Rule{
+		{
+			Repository:         "actions/checkout",
+			LatestVersion:      "v4",
+			MinimumVersion:     "v3",
+			DeprecatedVersions: []string{"v1"},
+		},
+		{
+			Repository:         "actions/setup-node",
+			LatestVersion:      "v4",
+			MinimumVersion:     "v3",
+			DeprecatedVersions: []string{"v1"},
+		},
+	}
+
+	manager := NewManagerWithResolverConfigAndRules(nil, &Config{}, customRules)
 
 	actions := []workflow.ActionReference{
 		{
 			Repository: "actions/checkout",
-			Version:    "v1", // deprecated according to default rules
+			Version:    "v1", // deprecated according to custom rules
 			Context:    "job:test/step:checkout",
 			FilePath:   ".github/workflows/test.yml",
 		},
 		{
 			Repository: "actions/setup-node",
-			Version:    "v2", // outdated according to default rules
+			Version:    "v2", // outdated according to custom rules
 			Context:    "job:test/step:setup-node",
 			FilePath:   ".github/workflows/test.yml",
 		},
@@ -118,7 +134,16 @@ func TestManager_AnalyzeActions_WithoutResolver(t *testing.T) {
 
 func TestManager_AnalyzeActions_WithResolver_EquivalentVersions(t *testing.T) {
 	resolver := NewMockVersionResolver()
-	manager := NewManagerWithResolver(resolver)
+	
+	// Provide custom rules since default rules are no longer used
+	customRules := []Rule{
+		{
+			Repository:    "actions/checkout",
+			LatestVersion: "v4",
+		},
+	}
+	
+	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Set up scenario where v4 and v4.2.1 are equivalent (same SHA)
 	resolver.SetVersionsEquivalent("actions/checkout", "v4.2.1", "v4", true)
@@ -144,7 +169,16 @@ func TestManager_AnalyzeActions_WithResolver_EquivalentVersions(t *testing.T) {
 
 func TestManager_AnalyzeActions_WithResolver_NonEquivalentVersions(t *testing.T) {
 	resolver := NewMockVersionResolver()
-	manager := NewManagerWithResolver(resolver)
+	
+	// Provide custom rules since default rules are no longer used
+	customRules := []Rule{
+		{
+			Repository:    "actions/checkout",
+			LatestVersion: "v4",
+		},
+	}
+	
+	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Set up scenario where v3 and v4 are NOT equivalent (different SHAs)
 	resolver.SetVersionsEquivalent("actions/checkout", "v3", "v4", false)
@@ -175,7 +209,16 @@ func TestManager_AnalyzeActions_WithResolver_NonEquivalentVersions(t *testing.T)
 func TestManager_AnalyzeActions_WithResolver_ResolverFailure(t *testing.T) {
 	// Create a resolver that will return false (fall back to string comparison)
 	resolver := NewMockVersionResolver()
-	manager := NewManagerWithResolver(resolver)
+	
+	// Provide custom rules since default rules are no longer used
+	customRules := []Rule{
+		{
+			Repository:    "actions/checkout",
+			LatestVersion: "v4",
+		},
+	}
+	
+	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Don't set any equivalencies, so resolver will return false/error
 
@@ -400,7 +443,16 @@ func TestSuggestLikeForLikeVersion_WithoutResolver(t *testing.T) {
 // TestAnalyzeActions_LikeForLikeSuggestions tests that the analyze method uses like-for-like suggestions
 func TestAnalyzeActions_LikeForLikeSuggestions(t *testing.T) {
 	resolver := NewMockVersionResolver()
-	manager := NewManagerWithResolver(resolver)
+	
+	// Provide custom rules since default rules are no longer used
+	customRules := []Rule{
+		{
+			Repository:    "actions/checkout",
+			LatestVersion: "v4",
+		},
+	}
+	
+	manager := NewManagerWithResolverConfigAndRules(resolver, &Config{}, customRules)
 
 	// Set up v3 as outdated compared to v4
 	resolver.SetVersionsEquivalent("actions/checkout", "v3", "v4", false)
@@ -452,7 +504,7 @@ func TestAnalyzeActions_LikeForLikeSuggestions(t *testing.T) {
 	}
 }
 
-// TestMergeRules tests the mergeRules function
+// TestMergeRules tests the mergeRules function - now only returns custom rules
 func TestMergeRules(t *testing.T) {
 	defaultRules := []Rule{
 		{
@@ -468,7 +520,7 @@ func TestMergeRules(t *testing.T) {
 	customRules := []Rule{
 		{
 			Repository:    "actions/checkout",
-			LatestVersion: "v5", // Override default
+			LatestVersion: "v5", // Should be used (custom takes precedence)
 		},
 		{
 			Repository:    "my-org/custom-action",
@@ -478,12 +530,12 @@ func TestMergeRules(t *testing.T) {
 
 	merged := mergeRules(defaultRules, customRules)
 
-	// Should have 3 rules total
-	if len(merged) != 3 {
-		t.Errorf("Expected 3 merged rules, got %d", len(merged))
+	// Should have only 2 rules (only custom rules, no defaults)
+	if len(merged) != 2 {
+		t.Errorf("Expected 2 custom rules, got %d", len(merged))
 	}
 
-	// Check that custom rule overrode default
+	// Check that custom rule is present
 	checkoutRule := findRuleInSlice(merged, "actions/checkout")
 	if checkoutRule == nil {
 		t.Fatal("Expected to find actions/checkout rule")
@@ -492,13 +544,10 @@ func TestMergeRules(t *testing.T) {
 		t.Errorf("Expected actions/checkout to use custom version v5, got %s", checkoutRule.LatestVersion)
 	}
 
-	// Check that default rule without override is preserved
+	// Check that default rule without custom override is NOT present
 	nodeRule := findRuleInSlice(merged, "actions/setup-node")
-	if nodeRule == nil {
-		t.Fatal("Expected to find actions/setup-node rule")
-	}
-	if nodeRule.LatestVersion != "v4" {
-		t.Errorf("Expected actions/setup-node to keep default version v4, got %s", nodeRule.LatestVersion)
+	if nodeRule != nil {
+		t.Errorf("Expected to NOT find default actions/setup-node rule, but found one")
 	}
 
 	// Check that new custom rule is added
@@ -539,10 +588,10 @@ func TestNewManagerWithResolverConfigAndRules(t *testing.T) {
 		t.Errorf("Expected custom rule version v3.0.0, got %s", rule.LatestVersion)
 	}
 
-	// Test that default rules are still present
+	// Test that default rules are NOT present (as intended)
 	defaultRule := manager.findRule("actions/checkout")
-	if defaultRule == nil {
-		t.Fatal("Expected to find default rule for actions/checkout")
+	if defaultRule != nil {
+		t.Errorf("Expected NOT to find default rule for actions/checkout, but found one")
 	}
 }
 

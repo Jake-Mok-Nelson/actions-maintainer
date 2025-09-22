@@ -4,6 +4,106 @@ import (
 	"testing"
 )
 
+// createPatcherWithCheckoutRules creates a patcher with actions/checkout rules for testing
+func createPatcherWithCheckoutRules() *Patcher {
+	patcher := NewPatcher()
+	
+	// Manually add actions/checkout rules needed for tests
+	checkoutRule := ActionPatchRule{
+		Repository: "actions/checkout",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v1",
+				ToVersion:   "v4",
+				Description: "Major upgrade from v1 to v4 with token handling and fetch behavior changes",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRemove,
+						Field:     "token",
+						Reason:    "In v4, the token parameter is no longer required as it automatically uses GITHUB_TOKEN with appropriate permissions",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "fetch-depth",
+						Value:     1,
+						Reason:    "v4 defaults to shallow clone (fetch-depth: 1) for better performance. Explicitly set if full history needed",
+					},
+				},
+			},
+			{
+				FromVersion: "v3",
+				ToVersion:   "v4",
+				Description: "Minor upgrade from v3 to v4 with performance improvements",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationAdd,
+						Field:     "show-progress",
+						Value:     true,
+						Reason:    "v4 adds show-progress parameter for better user experience during large repository operations",
+					},
+				},
+			},
+		},
+	}
+	patcher.AddPatchRule(checkoutRule)
+	return patcher
+}
+
+// createPatcherWithSetupNodeRules creates a patcher with actions/setup-node rules for testing
+func createPatcherWithSetupNodeRules() *Patcher {
+	patcher := NewPatcher()
+	
+	// Manually add actions/setup-node rules needed for tests
+	setupNodeRule := ActionPatchRule{
+		Repository: "actions/setup-node",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v2",
+				ToVersion:   "v4",
+				Description: "Upgrade from v2 to v4 with improved caching and registry support",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationRename,
+						Field:     "version",
+						NewField:  "node-version",
+						Reason:    "Parameter renamed from 'version' to 'node-version' for better clarity",
+					},
+					{
+						Operation: OperationAdd,
+						Field:     "cache",
+						Value:     "npm",
+						Reason:    "v4 introduces built-in dependency caching",
+					},
+				},
+			},
+		},
+	}
+	patcher.AddPatchRule(setupNodeRule)
+	return patcher
+}
+
+// createPatcherWithMigrationRules creates a patcher with migration rules for testing
+func createPatcherWithMigrationRules() *Patcher {
+	patcher := NewPatcher()
+	
+	// Add migration rules for testing
+	migrationRule := ActionPatchRule{
+		Repository: "legacy-org/deprecated-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion:    "v1",
+				ToVersion:      "v2",
+				FromRepository: "legacy-org/deprecated-action",
+				ToRepository:   "modern-org/recommended-action",
+				Description:    "Repository migration from legacy-org to modern-org",
+				Patches:        []FieldPatch{},
+			},
+		},
+	}
+	patcher.AddPatchRule(migrationRule)
+	return patcher
+}
+
 // TestBasicPatchOperations tests the basic patch operations
 func TestBasicPatchOperations(t *testing.T) {
 	patcher := NewPatcher()
@@ -37,7 +137,7 @@ func TestBasicPatchOperations(t *testing.T) {
 
 // TestCheckoutV1ToV4Transformation tests the transformation from checkout v1 to v4
 func TestCheckoutV1ToV4Transformation(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithCheckoutRules()
 
 	// Test data: simulate actions/checkout v1 with token
 	withBlock := map[string]interface{}{
@@ -88,7 +188,7 @@ func TestCheckoutV1ToV4Transformation(t *testing.T) {
 
 // TestSetupNodeV2ToV4Transformation tests setup-node parameter renaming
 func TestSetupNodeV2ToV4Transformation(t *testing.T) {
-	patcher := NewPatcher()
+	patcher := createPatcherWithSetupNodeRules()
 
 	// Test data: simulate actions/setup-node v2 with version parameter
 	withBlock := map[string]interface{}{

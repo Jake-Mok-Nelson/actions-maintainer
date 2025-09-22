@@ -47,26 +47,26 @@ type Rule struct {
 	MigrateToPath       string `json:"migrate_to_path,omitempty"` // Target path for migrations
 }
 
-// NewManager creates a new actions manager with default rules
+// NewManager creates a new actions manager with no default rules
 func NewManager() *Manager {
 	return &Manager{
-		rules:   getDefaultRules(),
+		rules:   []Rule{},
 		patcher: patcher.NewWorkflowPatcher(),
 		verbose: false,
 	}
 }
 
-// NewManagerWithResolver creates a new actions manager with a version resolver
+// NewManagerWithResolver creates a new actions manager with a version resolver and no default rules
 func NewManagerWithResolver(resolver VersionResolver) *Manager {
 	return &Manager{
-		rules:    getDefaultRules(),
+		rules:    []Rule{},
 		patcher:  patcher.NewWorkflowPatcher(),
 		resolver: resolver,
 		verbose:  false,
 	}
 }
 
-// NewManagerWithConfig creates a new actions manager with configuration
+// NewManagerWithConfig creates a new actions manager with configuration and no default rules
 func NewManagerWithConfig(config *Config) *Manager {
 	if config == nil {
 		config = &Config{Verbose: false}
@@ -77,13 +77,13 @@ func NewManagerWithConfig(config *Config) *Manager {
 	}
 
 	return &Manager{
-		rules:   getDefaultRules(),
+		rules:   []Rule{},
 		patcher: patcher.NewWorkflowPatcher(),
 		verbose: config.Verbose,
 	}
 }
 
-// NewManagerWithResolverAndConfig creates a new actions manager with a version resolver and configuration
+// NewManagerWithResolverAndConfig creates a new actions manager with a version resolver and configuration but no default rules
 func NewManagerWithResolverAndConfig(resolver VersionResolver, config *Config) *Manager {
 	if config == nil {
 		config = &Config{Verbose: false}
@@ -94,25 +94,28 @@ func NewManagerWithResolverAndConfig(resolver VersionResolver, config *Config) *
 	}
 
 	return &Manager{
-		rules:    getDefaultRules(),
+		rules:    []Rule{},
 		patcher:  patcher.NewWorkflowPatcher(),
 		resolver: resolver,
 		verbose:  config.Verbose,
 	}
 }
 
-// NewManagerWithResolverConfigAndRules creates a new actions manager with a version resolver, configuration, and custom rules
+// NewManagerWithResolverConfigAndRules creates a new actions manager with a version resolver, configuration, and only custom rules
 func NewManagerWithResolverConfigAndRules(resolver VersionResolver, config *Config, customRules []Rule) *Manager {
 	if config == nil {
 		config = &Config{Verbose: false}
 	}
 
-	// Merge custom rules with default rules
-	rules := mergeRules(getDefaultRules(), customRules)
+	// Use only custom rules - no default rules
+	rules := customRules
+	if rules == nil {
+		rules = []Rule{}
+	}
 
 	if config.Verbose {
 		log.Printf("Actions manager initialized with version resolver, custom rules, and verbose logging enabled")
-		log.Printf("Using %d rules (%d default + %d custom)", len(rules), len(getDefaultRules()), len(customRules))
+		log.Printf("Using %d custom rules (no default rules)", len(rules))
 	}
 
 	return &Manager{
@@ -539,32 +542,13 @@ func (m *Manager) suggestLikeForLikeVersion(repository, currentVersion, latestTa
 	}
 }
 
-// mergeRules merges custom rules with default rules, with custom rules taking precedence
+// mergeRules now only returns custom rules since default rules are no longer used
 func mergeRules(defaultRules, customRules []Rule) []Rule {
-	// Start with default rules
-	mergedRules := make([]Rule, len(defaultRules))
-	copy(mergedRules, defaultRules)
-
-	// Add custom rules (they can coexist with default rules when different paths are specified)
-	for _, customRule := range customRules {
-		replaced := false
-		// Check if this custom rule should replace an existing rule
-		for i, existingRule := range mergedRules {
-			if existingRule.Repository == customRule.Repository &&
-				existingRule.WorkflowPath == customRule.WorkflowPath {
-				// Replace existing rule with same repository and path
-				mergedRules[i] = customRule
-				replaced = true
-				break
-			}
-		}
-		// If no replacement happened, add as new rule
-		if !replaced {
-			mergedRules = append(mergedRules, customRule)
-		}
+	// Only return custom rules - default rules are ignored
+	if customRules == nil {
+		return []Rule{}
 	}
-
-	return mergedRules
+	return customRules
 }
 
 // getDefaultRules returns the default set of action rules
