@@ -34,10 +34,10 @@ jobs:
 	}
 
 	t.Logf("Found %d action references:", len(actions))
-	
+
 	regularActions := 0
 	reusableWorkflows := 0
-	
+
 	for i, action := range actions {
 		actionType := "action"
 		if action.IsReusable {
@@ -48,12 +48,12 @@ jobs:
 		}
 		t.Logf("  %d. %s@%s (%s)", i+1, action.Repository, action.Version, actionType)
 	}
-	
+
 	t.Logf("Summary:")
 	t.Logf("- Regular actions: %d", regularActions)
 	t.Logf("- Reusable workflows: %d", reusableWorkflows)
 	t.Logf("- Total: %d", len(actions))
-	
+
 	// Verify we got both types
 	if regularActions == 0 {
 		t.Error("Expected to find regular actions, but found none")
@@ -61,30 +61,30 @@ jobs:
 	if reusableWorkflows == 0 {
 		t.Error("Expected to find reusable workflows, but found none")
 	}
-	
+
 	// Verify specific actions
 	if len(actions) != 3 {
 		t.Errorf("Expected 3 actions total, got %d", len(actions))
 	}
-	
+
 	// Expected actions:
 	expectedActions := map[string]bool{
-		"actions/checkout":                                      false, // regular action
-		"actions/setup-node":                                   false, // regular action
-		"my-org/shared-workflows":                             false, // reusable workflow
+		"actions/checkout":        false, // regular action
+		"actions/setup-node":      false, // regular action
+		"my-org/shared-workflows": false, // reusable workflow
 	}
-	
+
 	for _, action := range actions {
 		if _, exists := expectedActions[action.Repository]; exists {
 			expectedActions[action.Repository] = true
 		}
 	}
-	
+
 	for repo, found := range expectedActions {
 		if !found {
 			t.Errorf("Expected to find action/workflow %s, but it was not found", repo)
 		}
 	}
-	
+
 	t.Log("✅ SUCCESS: Both regular actions and reusable workflows were detected in a single scan!")
 }
