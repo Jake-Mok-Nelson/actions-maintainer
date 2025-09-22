@@ -110,7 +110,11 @@ func createHeaderCell(result *ScanResult) NotebookCell {
 		fmt.Sprintf("- **%d** repositories scanned\n", result.Summary.TotalRepositories),
 		fmt.Sprintf("- **%d** workflow files analyzed\n", result.Summary.TotalWorkflowFiles),
 		fmt.Sprintf("- **%d** actions found across all workflows\n", result.Summary.TotalActions),
+		fmt.Sprintf("  - **%d** regular GitHub Actions\n", result.Summary.TotalRegularActions),
+		fmt.Sprintf("  - **%d** reusable workflows\n", result.Summary.TotalReusableWorkflows),
 		fmt.Sprintf("- **%d** unique action types identified\n", len(result.Summary.UniqueActions)),
+		fmt.Sprintf("  - **%d** unique regular actions\n", len(result.Summary.UniqueRegularActions)),
+		fmt.Sprintf("  - **%d** unique reusable workflows\n", len(result.Summary.UniqueReusableWorkflows)),
 	}
 
 	// Add issue summary
@@ -419,51 +423,94 @@ func createDetailedStatsCell(result *ScanResult) NotebookCell {
 		}
 	}
 
-	source = append(source, "### Most Used Actions\n")
-	source = append(source, "| Action | Usage Count | Unique Versions | Repositories |\n")
-	source = append(source, "|--------|-------------|-----------------|---------------|\n")
+	// Add overview section with breakdown
+	source = append(source, "### Overview\n")
+	source = append(source, "| Type | Total Usage | Unique Items |\n")
+	source = append(source, "|------|-------------|---------------|\n")
+	source = append(source, fmt.Sprintf("| **Regular Actions** | %d | %d |\n", result.Summary.TotalRegularActions, len(result.Summary.UniqueRegularActions)))
+	source = append(source, fmt.Sprintf("| **Reusable Workflows** | %d | %d |\n", result.Summary.TotalReusableWorkflows, len(result.Summary.UniqueReusableWorkflows)))
+	source = append(source, fmt.Sprintf("| **Total** | %d | %d |\n", result.Summary.TotalActions, len(result.Summary.UniqueActions)))
+	source = append(source, "\n")
 
-	// Sort actions by usage count
+	// Function to create stats table for a given action map
+	createStatsTable := func(title string, actionsMap map[string]ActionUsageStat) []string {
+		var tableSource []string
+		
+		if len(actionsMap) == 0 {
+			tableSource = append(tableSource, fmt.Sprintf("No %s found.\n", strings.ToLower(title)))
+			return tableSource
+		}
+
+		tableSource = append(tableSource, fmt.Sprintf("### %s\n", title))
+		tableSource = append(tableSource, "| Action/Workflow | Usage Count | Unique Versions | Repositories |\n")
+		tableSource = append(tableSource, "|-----------------|-------------|-----------------|---------------|\n")
+
+		// Sort by usage count
+		type ActionStat struct {
+			Name  string
+			Stats ActionUsageStat
+		}
+
+		var actionStats []ActionStat
+		for name, stats := range actionsMap {
+			actionStats = append(actionStats, ActionStat{Name: name, Stats: stats})
+		}
+
+		sort.Slice(actionStats, func(i, j int) bool {
+			return actionStats[i].Stats.UsageCount > actionStats[j].Stats.UsageCount
+		})
+
+		// Show top 10 most used
+		limit := len(actionStats)
+		if limit > 10 {
+			limit = 10
+		}
+
+		for i := 0; i < limit; i++ {
+			stat := actionStats[i]
+			tableSource = append(tableSource, fmt.Sprintf("| `%s` | %d | %d | %d |\n",
+				stat.Name, stat.Stats.UsageCount, len(stat.Stats.Versions), len(stat.Stats.Repositories)))
+		}
+
+		tableSource = append(tableSource, "\n")
+		return tableSource
+	}
+
+	// Add separate tables for regular actions and reusable workflows
+	source = append(source, createStatsTable("Most Used Regular Actions", result.Summary.UniqueRegularActions)...)
+	source = append(source, createStatsTable("Most Used Reusable Workflows", result.Summary.UniqueReusableWorkflows)...)
+
+	// Version distribution for top combined actions (keep existing behavior)
+	source = append(source, "### Version Distribution (Top 5 Overall)\n")
+	source = append(source, "\n")
+
+	// Sort all actions by usage count
 	type ActionStat struct {
 		Name  string
 		Stats ActionUsageStat
 	}
 
-	var actionStats []ActionStat
+	var allActionStats []ActionStat
 	for name, stats := range result.Summary.UniqueActions {
-		actionStats = append(actionStats, ActionStat{Name: name, Stats: stats})
+		allActionStats = append(allActionStats, ActionStat{Name: name, Stats: stats})
 	}
 
-	sort.Slice(actionStats, func(i, j int) bool {
-		return actionStats[i].Stats.UsageCount > actionStats[j].Stats.UsageCount
+	sort.Slice(allActionStats, func(i, j int) bool {
+		return allActionStats[i].Stats.UsageCount > allActionStats[j].Stats.UsageCount
 	})
 
-	// Show top 10 most used actions
-	limit := len(actionStats)
-	if limit > 10 {
-		limit = 10
-	}
-
-	for i := 0; i < limit; i++ {
-		stat := actionStats[i]
-		source = append(source, fmt.Sprintf("| `%s` | %d | %d | %d |\n",
-			stat.Name, stat.Stats.UsageCount, len(stat.Stats.Versions), len(stat.Stats.Repositories)))
-	}
-
-	source = append(source, "\n")
-
-	// Version distribution for top actions
-	source = append(source, "### Version Distribution (Top 5 Actions)\n")
-	source = append(source, "\n")
-
-	versionLimit := len(actionStats)
+	versionLimit := len(allActionStats)
 	if versionLimit > 5 {
 		versionLimit = 5
 	}
 
 	for i := 0; i < versionLimit; i++ {
-		stat := actionStats[i]
-		source = append(source, fmt.Sprintf("#### `%s`\n", stat.Name))
+		stat := allActionStats[i]
+		actionType := "Action"
+		if stat.Stats.IsReusableWorkflow {
+			actionType = "Reusable Workflow"
+		}
+		source = append(source, fmt.Sprintf("#### `%s` (%s)\n", stat.Name, actionType))
 		source = append(source, "| Version | Count |\n")
 		source = append(source, "|---------|-------|\n")
 
