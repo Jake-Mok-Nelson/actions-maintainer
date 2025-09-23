@@ -28,21 +28,14 @@ func main() {
 	scanCmd := climax.Command{
 		Name:  "scan",
 		Brief: "Scan GitHub repositories for action dependencies",
-		Usage: `scan [--owner <owner>] [--output <file>] [--create-prs] [--filter <regex>] [--verbose]`,
-		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and reports on action dependencies.`,
+		Usage: `scan [--owner <owner>] [--create-prs] [--filter <regex>] [--verbose]`,
+		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and outputs JSON results.`,
 		Flags: []climax.Flag{
 			{
 				Name:     "owner",
 				Short:    "o",
 				Usage:    `--owner <owner>`,
 				Help:     `GitHub owner (user or organization) to scan`,
-				Variable: true,
-			},
-			{
-				Name:     "output",
-				Short:    "f",
-				Usage:    `--output <file>`,
-				Help:     `Output file for results. Use .json extension for JSON format or .ipynb for Jupyter notebook (default: JSON to stdout)`,
 				Variable: true,
 			},
 			{
@@ -107,6 +100,33 @@ func main() {
 
 	cli.AddCommand(scanCmd)
 
+	// Report command
+	reportCmd := climax.Command{
+		Name:  "report",
+		Brief: "Generate formatted reports from scan JSON results",
+		Usage: `report [--input <file>] [--output <file>] [--format <format>]`,
+		Help:  `Generates formatted reports from JSON scan results. Input can be a file or stdin. Supports JSON and Jupyter notebook output formats.`,
+		Flags: []climax.Flag{
+			{
+				Name:     "input",
+				Short:    "i",
+				Usage:    `--input <file>`,
+				Help:     `JSON input file from scan command (default: read from stdin)`,
+				Variable: true,
+			},
+			{
+				Name:     "output",
+				Short:    "o",
+				Usage:    `--output <file>`,
+				Help:     `Output file for formatted report. Use .json extension for JSON format or .ipynb for Jupyter notebook (default: JSON to stdout)`,
+				Variable: true,
+			},
+		},
+		Handle: handleReport,
+	}
+
+	cli.AddCommand(reportCmd)
+
 	cli.Run()
 }
 
@@ -126,7 +146,6 @@ func handleScan(ctx climax.Context) int {
 		return 1
 	}
 
-	outputFile, _ := ctx.Get("output")
 	createPRs := ctx.Is("create-prs")
 	skipResolution := ctx.Is("skip-resolution")
 	filterPattern, _ := ctx.Get("filter")
@@ -328,35 +347,6 @@ func handleScan(ctx climax.Context) int {
 	// Build final scan result
 	scanResult := output.BuildScanResult(owner, repositoryResults)
 
-	// Output results
-	var outputWriter *os.File
-	if outputFile != "" {
-		file, err := os.Create(outputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
-			return 1
-		}
-		defer file.Close()
-		outputWriter = file
-	} else {
-		outputWriter = os.Stdout
-	}
-
-	// Determine output format based on file extension
-	isNotebook := strings.HasSuffix(strings.ToLower(outputFile), ".ipynb")
-
-	if isNotebook {
-		if err := output.FormatNotebook(scanResult, outputWriter); err != nil {
-			fmt.Fprintf(os.Stderr, "Error formatting notebook output: %v\n", err)
-			return 1
-		}
-	} else {
-		if err := output.FormatJSON(scanResult, outputWriter, true); err != nil {
-			fmt.Fprintf(os.Stderr, "Error formatting JSON output: %v\n", err)
-			return 1
-		}
-	}
-
 	// Create PRs if requested
 	if createPRs {
 		fmt.Printf("\nCreating pull requests for updates...\n")
@@ -382,30 +372,73 @@ func handleScan(ctx climax.Context) int {
 	// Finalize scan result with timing
 	output.FinalizeScanResult(scanResult)
 
-	// Print summary
-	fmt.Printf("\nScan complete!\n")
-	fmt.Printf("- Repositories scanned: %d\n", scanResult.Summary.TotalRepositories)
-	fmt.Printf("- Workflow files found: %d\n", scanResult.Summary.TotalWorkflowFiles)
-	fmt.Printf("- Actions analyzed: %d\n", scanResult.Summary.TotalActions)
-	fmt.Printf("  - Regular actions: %d\n", scanResult.Summary.TotalRegularActions)
-	fmt.Printf("  - Reusable workflows: %d\n", scanResult.Summary.TotalReusableWorkflows)
-	fmt.Printf("- Unique actions: %d\n", len(scanResult.Summary.UniqueActions))
-	fmt.Printf("  - Unique regular actions: %d\n", len(scanResult.Summary.UniqueRegularActions))
-	fmt.Printf("  - Unique reusable workflows: %d\n", len(scanResult.Summary.UniqueReusableWorkflows))
-
-	totalIssues := 0
-	for _, count := range scanResult.Summary.IssuesByType {
-		totalIssues += count
+	// Output results as JSON to stdout
+	if err := output.FormatJSON(scanResult, os.Stdout, true); err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting JSON output: %v\n", err)
+		return 1
 	}
-	fmt.Printf("- Issues found: %d\n", totalIssues)
 
+	return 0
+}
+
+func handleReport(ctx climax.Context) int {
+	inputFile, _ := ctx.Get("input")
+	outputFile, _ := ctx.Get("output")
+
+	// Read JSON input
+	var inputReader io.Reader
+	if inputFile != "" {
+		file, err := os.Open(inputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening input file: %v\n", err)
+			return 1
+		}
+		defer file.Close()
+		inputReader = file
+	} else {
+		inputReader = os.Stdin
+	}
+
+	// Parse JSON input
+	data, err := io.ReadAll(inputReader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+		return 1
+	}
+
+	var scanResult output.ScanResult
+	if err := json.Unmarshal(data, &scanResult); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing JSON input: %v\n", err)
+		return 1
+	}
+
+	// Set up output writer
+	var outputWriter io.Writer
 	if outputFile != "" {
-		fmt.Printf("- Results saved to: %s\n", outputFile)
+		file, err := os.Create(outputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+			return 1
+		}
+		defer file.Close()
+		outputWriter = file
+	} else {
+		outputWriter = os.Stdout
 	}
 
-	// Print cache statistics
-	if stats, err := cacheInstance.GetStats(); err == nil {
-		fmt.Printf("- Cache entries: %v total, %v valid\n", stats["total_entries"], stats["valid_entries"])
+	// Determine output format based on file extension
+	isNotebook := strings.HasSuffix(strings.ToLower(outputFile), ".ipynb")
+
+	if isNotebook {
+		if err := output.FormatNotebook(&scanResult, outputWriter); err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting notebook output: %v\n", err)
+			return 1
+		}
+	} else {
+		if err := output.FormatJSON(&scanResult, outputWriter, true); err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting JSON output: %v\n", err)
+			return 1
+		}
 	}
 
 	return 0
