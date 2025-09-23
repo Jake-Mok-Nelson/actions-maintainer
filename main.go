@@ -29,7 +29,7 @@ func main() {
 	scanCmd := climax.Command{
 		Name:  "scan",
 		Brief: "Scan GitHub repositories for action dependencies",
-		Usage: `scan [--owner <owner>] [--filter <regex>] [--verbose]`,
+		Usage: `scan [--owner <owner>] [--output <file>] [--filter <regex>] [--verbose]`,
 		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and outputs JSON results.`,
 		Flags: []climax.Flag{
 			{
@@ -37,6 +37,13 @@ func main() {
 				Short:    "o",
 				Usage:    `--owner <owner>`,
 				Help:     `GitHub owner (user or organization) to scan`,
+				Variable: true,
+			},
+			{
+				Name:     "output",
+				Short:    "O",
+				Usage:    `--output <file>`,
+				Help:     `Output file for scan results. Use .json extension for JSON format or .ipynb for Jupyter notebook (default: JSON to stdout)`,
 				Variable: true,
 			},
 			{
@@ -174,6 +181,7 @@ func handleScan(ctx climax.Context) int {
 		return 1
 	}
 
+	outputFile, _ := ctx.Get("output")
 	skipResolution := ctx.Is("skip-resolution")
 	filterPattern, _ := ctx.Get("filter")
 	verbose := ctx.Is("verbose")
@@ -377,10 +385,33 @@ func handleScan(ctx climax.Context) int {
 	// Finalize scan result with timing
 	output.FinalizeScanResult(scanResult)
 
-	// Output results as JSON to stdout
-	if err := output.FormatJSON(scanResult, os.Stdout, true); err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting JSON output: %v\n", err)
-		return 1
+	// Set up output writer
+	var outputWriter io.Writer
+	if outputFile != "" {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+			return 1
+		}
+		defer file.Close()
+		outputWriter = file
+	} else {
+		outputWriter = os.Stdout
+	}
+
+	// Determine output format based on file extension
+	isNotebook := strings.HasSuffix(strings.ToLower(outputFile), ".ipynb")
+
+	if isNotebook {
+		if err := output.FormatNotebook(scanResult, outputWriter); err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting notebook output: %v\n", err)
+			return 1
+		}
+	} else {
+		if err := output.FormatJSON(scanResult, outputWriter, true); err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting JSON output: %v\n", err)
+			return 1
+		}
 	}
 
 	return 0
