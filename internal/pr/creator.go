@@ -1,9 +1,11 @@
 package pr
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
+	"text/template"
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/github"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
@@ -14,6 +16,7 @@ import (
 type Creator struct {
 	githubClient *github.Client
 	patcher      *patcher.WorkflowPatcher
+	template     *template.Template
 }
 
 // UpdatePlan represents a plan to update actions in a repository
@@ -34,11 +37,32 @@ type ActionUpdate struct {
 	Issue          output.ActionIssue
 }
 
+// TemplateData represents the data available to PR body templates
+type TemplateData struct {
+	Repository        github.Repository
+	Updates           []ActionUpdate
+	UpdateCount       int
+	DeprecatedUpdates []ActionUpdate
+	OutdatedUpdates   []ActionUpdate
+	SecurityUpdates   []ActionUpdate
+	OtherUpdates      []ActionUpdate
+}
+
 // NewCreator creates a new PR creator
 func NewCreator(githubClient *github.Client) *Creator {
 	return &Creator{
 		githubClient: githubClient,
 		patcher:      patcher.NewWorkflowPatcher(),
+		template:     nil, // Use default template
+	}
+}
+
+// NewCreatorWithTemplate creates a new PR creator with a custom template
+func NewCreatorWithTemplate(githubClient *github.Client, tmpl *template.Template) *Creator {
+	return &Creator{
+		githubClient: githubClient,
+		patcher:      patcher.NewWorkflowPatcher(),
+		template:     tmpl,
 	}
 }
 
@@ -116,6 +140,59 @@ func (c *Creator) generatePRTitle(plan UpdatePlan) string {
 
 // generatePRBody creates a detailed body for the PR
 func (c *Creator) generatePRBody(plan UpdatePlan) string {
+	// If we have a custom template, use it
+	if c.template != nil {
+		return c.generatePRBodyFromTemplate(plan)
+	}
+	
+	// Otherwise, use the default template
+	return c.generateDefaultPRBody(plan)
+}
+
+// generatePRBodyFromTemplate generates PR body using the provided template
+func (c *Creator) generatePRBodyFromTemplate(plan UpdatePlan) string {
+	// Group updates by issue type
+	deprecatedUpdates := []ActionUpdate{}
+	outdatedUpdates := []ActionUpdate{}
+	securityUpdates := []ActionUpdate{}
+	otherUpdates := []ActionUpdate{}
+
+	for _, update := range plan.Updates {
+		switch update.Issue.IssueType {
+		case "deprecated":
+			deprecatedUpdates = append(deprecatedUpdates, update)
+		case "outdated":
+			outdatedUpdates = append(outdatedUpdates, update)
+		case "security":
+			securityUpdates = append(securityUpdates, update)
+		default:
+			otherUpdates = append(otherUpdates, update)
+		}
+	}
+
+	// Prepare template data
+	data := TemplateData{
+		Repository:        plan.Repository,
+		Updates:           plan.Updates,
+		UpdateCount:       len(plan.Updates),
+		DeprecatedUpdates: deprecatedUpdates,
+		OutdatedUpdates:   outdatedUpdates,
+		SecurityUpdates:   securityUpdates,
+		OtherUpdates:      otherUpdates,
+	}
+
+	// Execute template
+	var buf bytes.Buffer
+	if err := c.template.Execute(&buf, data); err != nil {
+		// Fall back to default template if custom template fails
+		return c.generateDefaultPRBody(plan)
+	}
+
+	return buf.String()
+}
+
+// generateDefaultPRBody creates a detailed body for the PR using the default template
+func (c *Creator) generateDefaultPRBody(plan UpdatePlan) string {
 	var body strings.Builder
 
 	body.WriteString("## GitHub Actions Updates\n\n")

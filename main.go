@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"text/template"
 
 	"github.com/tucnak/climax"
 
@@ -28,7 +29,7 @@ func main() {
 	scanCmd := climax.Command{
 		Name:  "scan",
 		Brief: "Scan GitHub repositories for action dependencies",
-		Usage: `scan [--owner <owner>] [--create-prs] [--filter <regex>] [--verbose]`,
+		Usage: `scan [--owner <owner>] [--filter <regex>] [--verbose]`,
 		Help:  `Scans all repositories for a GitHub owner, analyzes workflow files, and outputs JSON results.`,
 		Flags: []climax.Flag{
 			{
@@ -37,13 +38,6 @@ func main() {
 				Usage:    `--owner <owner>`,
 				Help:     `GitHub owner (user or organization) to scan`,
 				Variable: true,
-			},
-			{
-				Name:     "create-prs",
-				Short:    "p",
-				Usage:    `--create-prs`,
-				Help:     `Create pull requests for outdated actions`,
-				Variable: false,
 			},
 			{
 				Name:     "token",
@@ -127,6 +121,40 @@ func main() {
 
 	cli.AddCommand(reportCmd)
 
+	// Create-PR command
+	createPRCmd := climax.Command{
+		Name:  "create-pr",
+		Brief: "Create pull requests from scan results",
+		Usage: `create-pr [--input <file>] [--template <file>] [--token <token>]`,
+		Help:  `Creates pull requests for action updates from scan results. Input can be a file or stdin. Supports custom Go templates for PR body generation.`,
+		Flags: []climax.Flag{
+			{
+				Name:     "input",
+				Short:    "i",
+				Usage:    `--input <file>`,
+				Help:     `JSON input file from scan command (default: read from stdin)`,
+				Variable: true,
+			},
+			{
+				Name:     "template",
+				Short:    "T",
+				Usage:    `--template <file>`,
+				Help:     `Go template file for PR body generation. Template receives TemplateData with Repository, Updates, UpdateCount, and grouped update lists`,
+				Variable: true,
+			},
+			{
+				Name:     "token",
+				Short:    "t",
+				Usage:    `--token <token>`,
+				Help:     `GitHub personal access token (or set GITHUB_TOKEN env var)`,
+				Variable: true,
+			},
+		},
+		Handle: handleCreatePR,
+	}
+
+	cli.AddCommand(createPRCmd)
+
 	cli.Run()
 }
 
@@ -146,7 +174,6 @@ func handleScan(ctx climax.Context) int {
 		return 1
 	}
 
-	createPRs := ctx.Is("create-prs")
 	skipResolution := ctx.Is("skip-resolution")
 	filterPattern, _ := ctx.Get("filter")
 	verbose := ctx.Is("verbose")
@@ -347,28 +374,6 @@ func handleScan(ctx climax.Context) int {
 	// Build final scan result
 	scanResult := output.BuildScanResult(owner, repositoryResults)
 
-	// Create PRs if requested
-	if createPRs {
-		fmt.Printf("\nCreating pull requests for updates...\n")
-		prCreator := pr.NewCreator(githubClient)
-		updatePlans := pr.PlanUpdates(repositoryResults)
-
-		if len(updatePlans) == 0 {
-			fmt.Printf("No updates needed - all actions are up to date!\n")
-		} else {
-			fmt.Printf("Planning updates for %d repositories\n", len(updatePlans))
-			createdPRs, err := prCreator.CreateUpdatePRs(updatePlans)
-			if err != nil {
-				fmt.Printf("Warning: Some PRs failed to create: %v\n", err)
-			}
-
-			// Add created PRs to scan result
-			for _, createdPR := range createdPRs {
-				output.AddCreatedPR(scanResult, createdPR)
-			}
-		}
-	}
-
 	// Finalize scan result with timing
 	output.FinalizeScanResult(scanResult)
 
@@ -442,6 +447,103 @@ func handleReport(ctx climax.Context) int {
 	}
 
 	return 0
+}
+
+func handleCreatePR(ctx climax.Context) int {
+	inputFile, _ := ctx.Get("input")
+	templateFile, _ := ctx.Get("template")
+	
+	token, _ := ctx.Get("token")
+	if token == "" {
+		token = os.Getenv("GITHUB_TOKEN")
+	}
+	if token == "" {
+		fmt.Fprintf(os.Stderr, "Error: GitHub token is required. Use --token or set GITHUB_TOKEN environment variable\n")
+		return 1
+	}
+
+	// Read JSON input
+	var inputReader io.Reader
+	if inputFile != "" {
+		file, err := os.Open(inputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening input file: %v\n", err)
+			return 1
+		}
+		defer file.Close()
+		inputReader = file
+	} else {
+		inputReader = os.Stdin
+	}
+
+	// Parse JSON input
+	data, err := io.ReadAll(inputReader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+		return 1
+	}
+
+	var scanResult output.ScanResult
+	if err := json.Unmarshal(data, &scanResult); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing JSON input: %v\n", err)
+		return 1
+	}
+
+	// Create GitHub client
+	githubClient := github.NewClient(token)
+
+	// Load custom template if provided
+	var prCreator *pr.Creator
+	if templateFile != "" {
+		tmpl, err := loadTemplateFromFile(templateFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading template file: %v\n", err)
+			return 1
+		}
+		prCreator = pr.NewCreatorWithTemplate(githubClient, tmpl)
+	} else {
+		prCreator = pr.NewCreator(githubClient)
+	}
+
+	// Plan updates from scan result
+	updatePlans := pr.PlanUpdates(scanResult.Repositories)
+
+	if len(updatePlans) == 0 {
+		fmt.Printf("No updates needed - all actions are up to date!\n")
+		return 0
+	}
+
+	fmt.Printf("Creating pull requests for updates...\n")
+	fmt.Printf("Planning updates for %d repositories\n", len(updatePlans))
+	
+	createdPRs, err := prCreator.CreateUpdatePRs(updatePlans)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating PRs: %v\n", err)
+		return 1
+	}
+
+	// Output created PRs information
+	for _, createdPR := range createdPRs {
+		fmt.Printf("Created PR for %s: %s\n", createdPR.Repository, createdPR.URL)
+	}
+
+	fmt.Printf("Successfully created %d pull requests\n", len(createdPRs))
+	return 0
+}
+
+// loadTemplateFromFile loads a Go template from a file
+func loadTemplateFromFile(filename string) (*template.Template, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read template file: %w", err)
+	}
+
+	tmpl, err := template.New("pr-body").Parse(string(content))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	return tmpl, nil
 }
 
 // loadRulesFromFile loads custom rules from a JSON file
