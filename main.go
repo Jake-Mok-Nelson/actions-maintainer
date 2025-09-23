@@ -203,10 +203,9 @@ func handleScan(ctx climax.Context) int {
 
 	// Perform scan
 	fmt.Printf("Fetching repositories...\n")
-	if len(customProperties) > 0 {
-		fmt.Printf("Including custom properties: %v\n", customProperties)
-	}
-	repositories, err := githubClient.ListRepositoriesWithCustomProperties(owner, customProperties)
+	
+	// First, get basic repository list without custom properties
+	repositories, err := githubClient.ListRepositories(owner)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing repositories: %v\n", err)
 		return 1
@@ -237,6 +236,21 @@ func handleScan(ctx climax.Context) int {
 
 		fmt.Printf("Filtered repositories: %d/%d match pattern\n", len(filteredRepositories), len(repositories))
 		repositories = filteredRepositories
+	}
+
+	// Now fetch custom properties only for filtered repositories
+	if len(customProperties) > 0 {
+		fmt.Printf("Fetching custom properties for %d repositories: %v\n", len(repositories), customProperties)
+		for i := range repositories {
+			props, err := githubClient.GetRepositoryCustomProperties(repositories[i].Owner, repositories[i].Name, customProperties)
+			if err != nil {
+				if verbose {
+					log.Printf("Warning: Failed to fetch custom properties for %s: %v", repositories[i].FullName, err)
+				}
+				// Continue with empty properties rather than failing
+			}
+			repositories[i].CustomProperties = props
+		}
 	}
 
 	var repositoryResults []output.RepositoryResult
