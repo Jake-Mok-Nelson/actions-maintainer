@@ -57,26 +57,26 @@ type ActionIssue struct {
 
 // Summary provides aggregate statistics about the scan
 type Summary struct {
-	TotalRepositories     int                        `json:"total_repositories"`
-	TotalWorkflowFiles    int                        `json:"total_workflow_files"`
-	TotalActions          int                        `json:"total_actions"`           // Total of both actions and workflows
-	TotalRegularActions   int                        `json:"total_regular_actions"`   // Only regular GitHub Actions
-	TotalReusableWorkflows int                       `json:"total_reusable_workflows"` // Only reusable workflows
-	UniqueActions         map[string]ActionUsageStat `json:"unique_actions"`         // Combined actions and workflows
-	UniqueRegularActions  map[string]ActionUsageStat `json:"unique_regular_actions"` // Only regular actions
+	TotalRepositories       int                        `json:"total_repositories"`
+	TotalWorkflowFiles      int                        `json:"total_workflow_files"`
+	TotalActions            int                        `json:"total_actions"`             // Total of both actions and workflows
+	TotalRegularActions     int                        `json:"total_regular_actions"`     // Only regular GitHub Actions
+	TotalReusableWorkflows  int                        `json:"total_reusable_workflows"`  // Only reusable workflows
+	UniqueActions           map[string]ActionUsageStat `json:"unique_actions"`            // Combined actions and workflows
+	UniqueRegularActions    map[string]ActionUsageStat `json:"unique_regular_actions"`    // Only regular actions
 	UniqueReusableWorkflows map[string]ActionUsageStat `json:"unique_reusable_workflows"` // Only reusable workflows
-	IssuesByType          map[string]int             `json:"issues_by_type"`
-	IssuesBySeverity      map[string]int             `json:"issues_by_severity"`
-	TopIssues             []ActionIssue              `json:"top_issues"`
+	IssuesByType            map[string]int             `json:"issues_by_type"`
+	IssuesBySeverity        map[string]int             `json:"issues_by_severity"`
+	TopIssues               []ActionIssue              `json:"top_issues"`
 }
 
 // ActionUsageStat represents usage statistics for a specific action
 type ActionUsageStat struct {
-	Repository   string         `json:"repository"`
-	UsageCount   int            `json:"usage_count"`
-	Versions     map[string]int `json:"versions"`
-	Repositories []string       `json:"repositories"`
-	IsReusableWorkflow bool     `json:"is_reusable_workflow"` // true if this represents a reusable workflow
+	Repository         string         `json:"repository"`
+	UsageCount         int            `json:"usage_count"`
+	Versions           map[string]int `json:"versions"`
+	Repositories       []string       `json:"repositories"`
+	IsReusableWorkflow bool           `json:"is_reusable_workflow"` // true if this represents a reusable workflow
 }
 
 // CreatedPR represents a pull request that was created during the scan

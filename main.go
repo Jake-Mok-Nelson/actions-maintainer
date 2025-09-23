@@ -203,7 +203,7 @@ func handleScan(ctx climax.Context) int {
 
 	// Perform scan
 	fmt.Printf("Fetching repositories...\n")
-	
+
 	// First, get basic repository list without custom properties
 	repositories, err := githubClient.ListRepositories(owner)
 	if err != nil {

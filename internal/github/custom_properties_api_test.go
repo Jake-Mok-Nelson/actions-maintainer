@@ -11,7 +11,7 @@ import (
 func TestGetRepositoryCustomProperties_UsingOfficialAPI(t *testing.T) {
 	// This test validates that our implementation correctly uses the GitHub Custom Properties API
 	// In practice, this would require a GitHub token and actual repositories with custom properties
-	
+
 	client := &Client{
 		ctx:     context.Background(),
 		verbose: true,
@@ -47,7 +47,7 @@ func TestGetRepositoryCustomProperties_UsingOfficialAPI(t *testing.T) {
 func TestCustomPropertyValueConversion(t *testing.T) {
 	// This tests the logic for converting CustomPropertyValue.Value to string
 	// which handles different data types that GitHub's API might return
-	
+
 	testCases := []struct {
 		name     string
 		value    interface{}
@@ -100,7 +100,7 @@ func TestCustomPropertyValueConversion(t *testing.T) {
 // Integration test documentation
 func TestCustomPropertiesAPIDocumentation(t *testing.T) {
 	// This test serves as documentation for how to use the GitHub Custom Properties API
-	
+
 	t.Log("=== GitHub Custom Properties API Integration ===")
 	t.Log("")
 	t.Log("The GetRepositoryCustomProperties function now uses GitHub's official Custom Properties API:")

@@ -565,7 +565,7 @@ func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []
 				valueStr = fmt.Sprintf("%v", v)
 			}
 			allCustomProperties[prop.PropertyName] = valueStr
-			
+
 			if c.verbose {
 				log.Printf("GitHub API: Found custom property '%s' = '%s'", prop.PropertyName, valueStr)
 			}
