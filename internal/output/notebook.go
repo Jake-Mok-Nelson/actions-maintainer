@@ -435,7 +435,7 @@ func createDetailedStatsCell(result *ScanResult) NotebookCell {
 	// Function to create stats table for a given action map
 	createStatsTable := func(title string, actionsMap map[string]ActionUsageStat) []string {
 		var tableSource []string
-		
+
 		if len(actionsMap) == 0 {
 			tableSource = append(tableSource, fmt.Sprintf("No %s found.\n", strings.ToLower(title)))
 			return tableSource
@@ -580,28 +580,48 @@ let filteredRepositories = [];
 
 // Initialize filters with data from the table
 function initializeFilters() {
-    // Get all table rows (skip header)
-    const table = document.querySelector('table');
-    if (!table) return;
+    // Find the repository summary table specifically
+    // Look for the table that has a header containing "Repository"
+    const tables = document.querySelectorAll('table');
+    let repositoryTable = null;
     
-    const rows = table.querySelectorAll('tr');
+    for (const table of tables) {
+        const headerRow = table.querySelector('tr');
+        if (headerRow && headerRow.textContent.includes('Repository') && headerRow.textContent.includes('Workflows')) {
+            repositoryTable = table;
+            break;
+        }
+    }
+    
+    if (!repositoryTable) {
+        console.log('Repository table not found');
+        return;
+    }
+    
+    const rows = repositoryTable.querySelectorAll('tr');
     const headerRow = rows[0];
     const dataRows = Array.from(rows).slice(1);
     
-    // Parse header to find column indices for custom properties
+    // Parse header to dynamically find column indices for custom properties
     const headers = Array.from(headerRow.querySelectorAll('th, td')).map(th => th.textContent.trim());
     const propertyIndices = {};
+    
+    // Find column indices for each custom property
 `)
 
-	for i, key := range propertyKeys {
-		source = append(source, fmt.Sprintf("    propertyIndices['%s'] = %d; // Column index for %s\n", key, 4+i, key))
+	for _, key := range propertyKeys {
+		source = append(source, fmt.Sprintf(`    const %sIndex = headers.indexOf('%s');
+    if (%sIndex !== -1) {
+        propertyIndices['%s'] = %sIndex;
+    }
+`, key, key, key, key, key))
 	}
 
 	source = append(source, `
     
     // Extract repository data
     allRepositories = dataRows.map(row => {
-        const cells = row.querySelectorAll('td');
+        const cells = row.querySelectorAll('th, td');
         const repo = {
             element: row,
             name: cells[0] ? cells[0].textContent.trim() : '',
@@ -612,7 +632,7 @@ function initializeFilters() {
 `)
 
 	for _, key := range propertyKeys {
-		source = append(source, fmt.Sprintf(`        if (propertyIndices['%s'] && cells[propertyIndices['%s']]) {
+		source = append(source, fmt.Sprintf(`        if (propertyIndices['%s'] !== undefined && cells[propertyIndices['%s']]) {
             repo.properties['%s'] = cells[propertyIndices['%s']].textContent.trim();
         }
 `, key, key, key, key))
@@ -713,8 +733,30 @@ function updateFilterStatus() {
     }
 }
 
-// Initialize filters when the page loads
-setTimeout(initializeFilters, 100);
+// Initialize filters with better timing for Jupyter notebooks
+// Try multiple times with increasing delays to account for rendering
+function attemptInitialization(attempt = 0) {
+    if (attempt > 10) {
+        console.log('Failed to initialize filters after 10 attempts');
+        return;
+    }
+    
+    const tables = document.querySelectorAll('table');
+    const hasRepositoryTable = Array.from(tables).some(table => {
+        const headerRow = table.querySelector('tr');
+        return headerRow && headerRow.textContent.includes('Repository') && headerRow.textContent.includes('Workflows');
+    });
+    
+    if (hasRepositoryTable) {
+        initializeFilters();
+    } else {
+        // Retry with exponential backoff
+        setTimeout(() => attemptInitialization(attempt + 1), 100 * Math.pow(2, attempt));
+    }
+}
+
+// Start initialization attempts
+attemptInitialization();
 </script>
 
 `)
