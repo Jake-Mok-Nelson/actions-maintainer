@@ -144,7 +144,7 @@ func (c *Creator) generatePRBody(plan UpdatePlan) string {
 	if c.template != nil {
 		return c.generatePRBodyFromTemplate(plan)
 	}
-	
+
 	// Otherwise, use the default template
 	return c.generateDefaultPRBody(plan)
 }
