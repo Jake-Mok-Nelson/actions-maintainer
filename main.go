@@ -132,7 +132,7 @@ func main() {
 	createPRCmd := climax.Command{
 		Name:  "create-pr",
 		Brief: "Create pull requests from scan results",
-		Usage: `create-pr [--input <file>] [--template <file>] [--token <token>]`,
+		Usage: `create-pr [--input <file>] [--template <file>] [--token <token>] [--filter <regex>]`,
 		Help:  `Creates pull requests for action updates from scan results. Input can be a file or stdin. Supports custom Go templates for PR body generation.`,
 		Flags: []climax.Flag{
 			{
@@ -154,6 +154,13 @@ func main() {
 				Short:    "t",
 				Usage:    `--token <token>`,
 				Help:     `GitHub personal access token (or set GITHUB_TOKEN env var)`,
+				Variable: true,
+			},
+			{
+				Name:     "filter",
+				Short:    "r",
+				Usage:    `--filter <regex>`,
+				Help:     `Regular expression to filter repositories by name (e.g., "my-repos-.*")`,
 				Variable: true,
 			},
 		},
@@ -483,6 +490,7 @@ func handleReport(ctx climax.Context) int {
 func handleCreatePR(ctx climax.Context) int {
 	inputFile, _ := ctx.Get("input")
 	templateFile, _ := ctx.Get("template")
+	filterPattern, _ := ctx.Get("filter")
 
 	token, _ := ctx.Get("token")
 	if token == "" {
@@ -518,6 +526,26 @@ func handleCreatePR(ctx climax.Context) int {
 	if err := json.Unmarshal(data, &scanResult); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing JSON input: %v\n", err)
 		return 1
+	}
+
+	// Apply repository filter if provided
+	if filterPattern != "" {
+		fmt.Printf("Applying filter pattern: %s\n", filterPattern)
+		filterRegex, err := regexp.Compile(filterPattern)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Invalid filter regex pattern '%s': %v\n", filterPattern, err)
+			return 1
+		}
+
+		var filteredRepositories []output.RepositoryResult
+		for _, repo := range scanResult.Repositories {
+			if filterRegex.MatchString(repo.Name) {
+				filteredRepositories = append(filteredRepositories, repo)
+			}
+		}
+
+		fmt.Printf("Filtered repositories: %d/%d match pattern\n", len(filteredRepositories), len(scanResult.Repositories))
+		scanResult.Repositories = filteredRepositories
 	}
 
 	// Create GitHub client
