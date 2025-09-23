@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/github"
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/output"
@@ -609,5 +610,215 @@ func TestValidateBatchingInvariant(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNewCreatorWithTemplate tests creator with custom template
+func TestNewCreatorWithTemplate(t *testing.T) {
+	githubClient := &github.Client{}
+	
+	// Create a simple template
+	tmpl, err := template.New("test").Parse("## Custom PR for {{ .Repository.FullName }}\n{{ .UpdateCount }} updates")
+	if err != nil {
+		t.Fatalf("Failed to create template: %v", err)
+	}
+	
+	creator := NewCreatorWithTemplate(githubClient, tmpl)
+	
+	if creator.githubClient != githubClient {
+		t.Error("GitHub client not set correctly")
+	}
+	
+	if creator.template != tmpl {
+		t.Error("Template not set correctly")
+	}
+	
+	if creator.patcher == nil {
+		t.Error("Patcher not initialized")
+	}
+}
+
+// TestGeneratePRBodyWithTemplate tests custom template PR body generation
+func TestGeneratePRBodyWithTemplate(t *testing.T) {
+	githubClient := &github.Client{}
+	
+	// Create a custom template
+	templateStr := `# Custom PR for {{ .Repository.FullName }}
+
+Updates: {{ .UpdateCount }}
+{{ if .DeprecatedUpdates -}}
+Deprecated: {{ len .DeprecatedUpdates }}
+{{ range .DeprecatedUpdates -}}
+- {{ .ActionRepo }}: {{ .CurrentVersion }} → {{ .TargetVersion }}
+{{ end -}}
+{{ end -}}
+{{ if .OutdatedUpdates -}}
+Outdated: {{ len .OutdatedUpdates }}
+{{ range .OutdatedUpdates -}}
+- {{ .ActionRepo }}: {{ .CurrentVersion }} → {{ .TargetVersion }}
+{{ end -}}
+{{ end -}}`
+
+	tmpl, err := template.New("test").Parse(templateStr)
+	if err != nil {
+		t.Fatalf("Failed to create template: %v", err)
+	}
+	
+	creator := NewCreatorWithTemplate(githubClient, tmpl)
+	
+	// Create test plan
+	plan := UpdatePlan{
+		Repository: github.Repository{
+			FullName:      "test-org/test-repo",
+			DefaultBranch: "main",
+			Owner:         "test-org",
+			Name:          "test-repo",
+		},
+		Updates: []ActionUpdate{
+			{
+				ActionRepo:     "actions/checkout",
+				CurrentVersion: "v3",
+				TargetVersion:  "v4",
+				FilePath:       ".github/workflows/ci.yml",
+				Issue: output.ActionIssue{
+					IssueType: "outdated",
+					Severity:  "medium",
+				},
+			},
+			{
+				ActionRepo:     "actions/setup-node",
+				CurrentVersion: "v2",
+				TargetVersion:  "v4",
+				FilePath:       ".github/workflows/ci.yml",
+				Issue: output.ActionIssue{
+					IssueType: "deprecated",
+					Severity:  "high",
+				},
+			},
+		},
+	}
+	
+	body := creator.generatePRBody(plan)
+	
+	// Verify custom template output
+	if !strings.Contains(body, "# Custom PR for test-org/test-repo") {
+		t.Error("Custom template title not found")
+	}
+	
+	if !strings.Contains(body, "Updates: 2") {
+		t.Error("Update count not found")
+	}
+	
+	if !strings.Contains(body, "Deprecated: 1") {
+		t.Error("Deprecated count not found")
+	}
+	
+	if !strings.Contains(body, "Outdated: 1") {
+		t.Error("Outdated count not found")
+	}
+	
+	if !strings.Contains(body, "actions/setup-node: v2 → v4") {
+		t.Error("Deprecated update details not found")
+	}
+	
+	if !strings.Contains(body, "actions/checkout: v3 → v4") {
+		t.Error("Outdated update details not found")
+	}
+}
+
+// TestGeneratePRBodyWithoutTemplate tests default template fallback
+func TestGeneratePRBodyWithoutTemplate(t *testing.T) {
+	githubClient := &github.Client{}
+	creator := NewCreator(githubClient) // No custom template
+	
+	// Create test plan
+	plan := UpdatePlan{
+		Repository: github.Repository{
+			FullName:      "test-org/test-repo",
+			DefaultBranch: "main",
+			Owner:         "test-org",
+			Name:          "test-repo",
+		},
+		Updates: []ActionUpdate{
+			{
+				ActionRepo:     "actions/checkout",
+				CurrentVersion: "v3",
+				TargetVersion:  "v4",
+				FilePath:       ".github/workflows/ci.yml",
+				Issue: output.ActionIssue{
+					IssueType: "outdated",
+					Severity:  "medium",
+				},
+			},
+		},
+	}
+	
+	body := creator.generatePRBody(plan)
+	
+	// Verify default template output
+	if !strings.Contains(body, "## GitHub Actions Updates") {
+		t.Error("Default template title not found")
+	}
+	
+	if !strings.Contains(body, "### 📊 Version Updates") {
+		t.Error("Version updates section not found")
+	}
+	
+	if !strings.Contains(body, "actions/checkout**: v3 → v4") {
+		t.Error("Action update details not found")
+	}
+	
+	if !strings.Contains(body, "This PR was automatically generated") {
+		t.Error("Footer not found")
+	}
+}
+
+// TestTemplateDataGrouping tests that updates are correctly grouped by issue type
+func TestTemplateDataGrouping(t *testing.T) {
+	githubClient := &github.Client{}
+	
+	// Template that shows all groups
+	templateStr := `Deprecated: {{ len .DeprecatedUpdates }}
+Outdated: {{ len .OutdatedUpdates }}
+Security: {{ len .SecurityUpdates }}
+Other: {{ len .OtherUpdates }}`
+
+	tmpl, err := template.New("test").Parse(templateStr)
+	if err != nil {
+		t.Fatalf("Failed to create template: %v", err)
+	}
+	
+	creator := NewCreatorWithTemplate(githubClient, tmpl)
+	
+	// Create test plan with different issue types
+	plan := UpdatePlan{
+		Repository: github.Repository{
+			FullName: "test-org/test-repo",
+		},
+		Updates: []ActionUpdate{
+			{
+				ActionRepo: "actions/checkout",
+				Issue:      output.ActionIssue{IssueType: "deprecated"},
+			},
+			{
+				ActionRepo: "actions/setup-node", 
+				Issue:      output.ActionIssue{IssueType: "outdated"},
+			},
+			{
+				ActionRepo: "actions/upload-artifact",
+				Issue:      output.ActionIssue{IssueType: "security"},
+			},
+			{
+				ActionRepo: "actions/download-artifact",
+				Issue:      output.ActionIssue{IssueType: "unknown"},
+			},
+		},
+	}
+	
+	body := creator.generatePRBody(plan)
+	
+	expected := "Deprecated: 1\nOutdated: 1\nSecurity: 1\nOther: 1"
+	if body != expected {
+		t.Errorf("Expected:\n%s\nGot:\n%s", expected, body)
 	}
 }
