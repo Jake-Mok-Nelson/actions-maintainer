@@ -483,7 +483,7 @@ func handleReport(ctx climax.Context) int {
 func handleCreatePR(ctx climax.Context) int {
 	inputFile, _ := ctx.Get("input")
 	templateFile, _ := ctx.Get("template")
-	
+
 	token, _ := ctx.Get("token")
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
@@ -546,7 +546,7 @@ func handleCreatePR(ctx climax.Context) int {
 
 	fmt.Printf("Creating pull requests for updates...\n")
 	fmt.Printf("Planning updates for %d repositories\n", len(updatePlans))
-	
+
 	createdPRs, err := prCreator.CreateUpdatePRs(updatePlans)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating PRs: %v\n", err)
