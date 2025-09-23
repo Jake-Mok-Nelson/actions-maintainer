@@ -507,9 +507,9 @@ func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []
 		return customProperties, nil
 	}
 
-	// GitHub's repository custom properties are available via the repository API
-	// Note: Custom properties might be available in different API endpoints depending on the GitHub version
-	// This implementation attempts to fetch them from the repository details
+	// GitHub's repository custom properties are available via different API endpoints
+	// depending on the GitHub version and organization configuration
+	// This implementation tries multiple approaches:
 
 	if c.verbose {
 		log.Printf("GitHub API: GET /repos/%s/%s (for repository details including custom properties)", owner, repo)
@@ -529,65 +529,23 @@ func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []
 		log.Printf("GitHub API: Repository %s/%s fetched (status: %d)", owner, repo, resp.StatusCode)
 	}
 
-	// Try to extract custom properties from repository response
-	// GitHub Enterprise may have custom properties in the repository object
-	// For GitHub.com, custom properties might be in organization settings or metadata
-
-	// Method 1: Check if the repository object has custom properties
 	if repository != nil {
-		// The go-github library might not expose all custom properties directly
-		// Try to access them via the raw response if available
+		// Method 1: Try to get custom properties from the official GitHub API
+		// Note: This requires the repository custom properties API to be available
+		customProperties = c.tryGetOfficialCustomProperties(owner, repo, properties)
 
-		// For demonstration purposes, we'll simulate some custom properties
-		// In a real implementation, you would need to:
-		// 1. Use the GitHub GraphQL API to get custom properties
-		// 2. Use the REST API custom properties endpoint if available
-		// 3. Parse them from the repository metadata
+		// Method 2: Fall back to extracting from repository metadata (topics, naming conventions)
+		if len(customProperties) == 0 {
+			if c.verbose {
+				log.Printf("GitHub API: No official custom properties found, trying metadata extraction for %s/%s", owner, repo)
+			}
+			customProperties = c.extractCustomPropertiesFromMetadata(repository, properties)
+		}
 
 		if c.verbose {
 			log.Printf("Repository topics: %v", repository.Topics)
 			log.Printf("Repository language: %s", repository.GetLanguage())
 			log.Printf("Repository description: %s", repository.GetDescription())
-		}
-
-		// Try to extract properties from repository topics or other metadata
-		// This is a placeholder implementation - actual implementation depends on how
-		// your organization stores custom properties
-
-		for _, propertyName := range properties {
-			switch propertyName {
-			case "ProductId":
-				// Example: Extract from topics that start with "product-"
-				for _, topic := range repository.Topics {
-					if strings.HasPrefix(topic, "product-") {
-						customProperties[propertyName] = strings.TrimPrefix(topic, "product-")
-						break
-					}
-				}
-			case "Team":
-				// Example: Extract from topics that start with "team-"
-				for _, topic := range repository.Topics {
-					if strings.HasPrefix(topic, "team-") {
-						customProperties[propertyName] = strings.TrimPrefix(topic, "team-")
-						break
-					}
-				}
-			case "Environment":
-				// Example: Extract from repository name patterns
-				if strings.Contains(repository.GetName(), "-prod") {
-					customProperties[propertyName] = "production"
-				} else if strings.Contains(repository.GetName(), "-dev") {
-					customProperties[propertyName] = "development"
-				} else if strings.Contains(repository.GetName(), "-test") {
-					customProperties[propertyName] = "testing"
-				}
-			default:
-				// For other properties, try to find them in repository metadata
-				// This could be extended to use GraphQL or other API endpoints
-				if c.verbose {
-					log.Printf("Custom property '%s' not found in repository metadata", propertyName)
-				}
-			}
 		}
 	}
 
@@ -596,4 +554,191 @@ func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []
 	}
 
 	return customProperties, nil
+}
+
+// tryGetOfficialCustomProperties attempts to fetch custom properties using the official GitHub API
+func (c *Client) tryGetOfficialCustomProperties(owner, repo string, properties []string) map[string]string {
+	customProperties := make(map[string]string)
+
+	// GitHub custom properties API is available for organizations
+	// Try the organization custom properties endpoint first
+	if c.verbose {
+		log.Printf("GitHub API: Attempting to fetch official custom properties for %s/%s", owner, repo)
+	}
+
+	// Note: As of 2024, the GitHub custom properties API is still evolving
+	// This is a placeholder for the official API implementation
+	// In practice, you would use the appropriate endpoint based on your GitHub version:
+	//
+	// For GitHub Enterprise Server 3.10+:
+	// GET /repos/{owner}/{repo}/properties
+	//
+	// For GitHub.com with organization custom properties:
+	// GET /orgs/{org}/properties
+	// GET /repos/{owner}/{repo}/custom-properties
+	//
+	// The exact endpoint and response format may vary based on your GitHub configuration
+
+	// TODO: Implement actual API calls when the go-github library supports custom properties
+	// For now, we return empty to fall back to metadata extraction
+
+	if c.verbose && len(customProperties) == 0 {
+		log.Printf("GitHub API: Official custom properties API not yet implemented, falling back to metadata extraction")
+	}
+
+	return customProperties
+}
+
+// extractCustomPropertiesFromMetadata extracts custom properties from repository metadata
+func (c *Client) extractCustomPropertiesFromMetadata(repository *github.Repository, properties []string) map[string]string {
+	customProperties := make(map[string]string)
+
+	if c.verbose {
+		log.Printf("GitHub API: Extracting custom properties from repository metadata (topics, naming conventions)")
+	}
+
+	// Extract properties from repository topics and naming conventions
+	// This approach works with current GitHub features and provides a practical solution
+	// until the official custom properties API is more widely available
+
+	for _, propertyName := range properties {
+		switch propertyName {
+		case "ProductId":
+			// Method 1: Extract from topics that start with "product-"
+			for _, topic := range repository.Topics {
+				if strings.HasPrefix(topic, "product-") {
+					customProperties[propertyName] = strings.TrimPrefix(topic, "product-")
+					if c.verbose {
+						log.Printf("GitHub API: Found ProductId '%s' from topic '%s'", customProperties[propertyName], topic)
+					}
+					break
+				}
+			}
+			// Method 2: Extract from repository description using patterns
+			if customProperties[propertyName] == "" {
+				desc := repository.GetDescription()
+				// Case-insensitive search for "product:" or "Product:"
+				descLower := strings.ToLower(desc)
+				if strings.Contains(descLower, "product:") {
+					// Look for "product: xyz" in description (case-insensitive)
+					parts := strings.Split(descLower, "product:")
+					if len(parts) > 1 {
+						// Extract the value after "product:", handling spaces and multiple values
+						valuesPart := strings.TrimSpace(parts[1])
+						productId := strings.Split(valuesPart, " ")[0]
+						productId = strings.TrimSpace(productId)
+						if productId != "" {
+							customProperties[propertyName] = productId
+							if c.verbose {
+								log.Printf("GitHub API: Found ProductId '%s' from description", productId)
+							}
+						}
+					}
+				}
+			}
+
+		case "Team":
+			// Method 1: Extract from topics that start with "team-"
+			for _, topic := range repository.Topics {
+				if strings.HasPrefix(topic, "team-") {
+					customProperties[propertyName] = strings.TrimPrefix(topic, "team-")
+					if c.verbose {
+						log.Printf("GitHub API: Found Team '%s' from topic '%s'", customProperties[propertyName], topic)
+					}
+					break
+				}
+			}
+			// Method 2: Extract from repository description using patterns
+			if customProperties[propertyName] == "" {
+				desc := repository.GetDescription()
+				// Case-insensitive search for "team:" or "Team:"
+				descLower := strings.ToLower(desc)
+				if strings.Contains(descLower, "team:") {
+					// Look for "team: xyz" in description (case-insensitive)
+					parts := strings.Split(descLower, "team:")
+					if len(parts) > 1 {
+						// Extract the value after "team:", handling spaces and multiple values
+						valuesPart := strings.TrimSpace(parts[1])
+						team := strings.Split(valuesPart, " ")[0]
+						team = strings.TrimSpace(team)
+						if team != "" {
+							customProperties[propertyName] = team
+							if c.verbose {
+								log.Printf("GitHub API: Found Team '%s' from description", team)
+							}
+						}
+					}
+				}
+			}
+
+		case "Environment":
+			// Method 1: Extract from repository name patterns
+			repoName := repository.GetName()
+			if strings.Contains(repoName, "-prod") {
+				customProperties[propertyName] = "production"
+			} else if strings.Contains(repoName, "-dev") {
+				customProperties[propertyName] = "development"
+			} else if strings.Contains(repoName, "-test") || strings.Contains(repoName, "-testing") {
+				customProperties[propertyName] = "testing"
+			} else if strings.Contains(repoName, "-stage") || strings.Contains(repoName, "-staging") {
+				customProperties[propertyName] = "staging"
+			}
+			
+			// Method 2: Extract from topics that start with "env-"
+			if customProperties[propertyName] == "" {
+				for _, topic := range repository.Topics {
+					if strings.HasPrefix(topic, "env-") {
+						customProperties[propertyName] = strings.TrimPrefix(topic, "env-")
+						if c.verbose {
+							log.Printf("GitHub API: Found Environment '%s' from topic '%s'", customProperties[propertyName], topic)
+						}
+						break
+					}
+				}
+			}
+			
+			if customProperties[propertyName] != "" && c.verbose {
+				log.Printf("GitHub API: Found Environment '%s' from repository name pattern", customProperties[propertyName])
+			}
+
+		default:
+			// For other properties, try generic extraction from topics and description
+			propertyKey := strings.ToLower(propertyName)
+			
+			// Look for topics in format "propertyname-value"
+			for _, topic := range repository.Topics {
+				if strings.HasPrefix(topic, propertyKey+"-") {
+					customProperties[propertyName] = strings.TrimPrefix(topic, propertyKey+"-")
+					if c.verbose {
+						log.Printf("GitHub API: Found custom property '%s' = '%s' from topic '%s'", propertyName, customProperties[propertyName], topic)
+					}
+					break
+				}
+			}
+			
+			// Look for "propertyname: value" in description
+			if customProperties[propertyName] == "" {
+				desc := strings.ToLower(repository.GetDescription())
+				searchPattern := propertyKey + ":"
+				if strings.Contains(desc, searchPattern) {
+					parts := strings.Split(desc, searchPattern)
+					if len(parts) > 1 {
+						value := strings.TrimSpace(strings.Split(parts[1], " ")[0])
+						if value != "" {
+							customProperties[propertyName] = value
+							if c.verbose {
+								log.Printf("GitHub API: Found custom property '%s' = '%s' from description", propertyName, value)
+							}
+						}
+					}
+				}
+			}
+			
+			if customProperties[propertyName] == "" && c.verbose {
+				log.Printf("GitHub API: Custom property '%s' not found in repository metadata", propertyName)
+			}
+		}
+	}
+
+	return customProperties
 }
