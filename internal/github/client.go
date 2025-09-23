@@ -494,7 +494,7 @@ func (c *Client) GetTagsForRepo(owner, repo string) (map[string]string, error) {
 	return tags, nil
 }
 
-// GetRepositoryCustomProperties fetches custom properties for a repository
+// GetRepositoryCustomProperties fetches custom properties for a repository using the GitHub Custom Properties API
 func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []string) (map[string]string, error) {
 	if c.verbose {
 		log.Printf("GitHub API: Getting custom properties for repository '%s/%s': %v", owner, repo, properties)
@@ -507,238 +507,83 @@ func (c *Client) GetRepositoryCustomProperties(owner, repo string, properties []
 		return customProperties, nil
 	}
 
-	// GitHub's repository custom properties are available via different API endpoints
-	// depending on the GitHub version and organization configuration
-	// This implementation tries multiple approaches:
-
+	// Use the official GitHub Custom Properties API
 	if c.verbose {
-		log.Printf("GitHub API: GET /repos/%s/%s (for repository details including custom properties)", owner, repo)
+		log.Printf("GitHub API: GET /repos/%s/%s/properties/values (custom properties API)", owner, repo)
 	}
 
-	repository, resp, err := c.client.Repositories.Get(c.ctx, owner, repo)
+	// Fetch all custom property values for the repository
+	customPropertyValues, resp, err := c.client.Repositories.GetAllCustomPropertyValues(c.ctx, owner, repo)
 	if err != nil {
 		if c.verbose {
-			log.Printf("GitHub API: Error getting repository details for custom properties - %v", err)
+			log.Printf("GitHub API: Error getting custom properties for %s/%s - %v", owner, repo, err)
+			if resp != nil {
+				log.Printf("GitHub API: Response status: %d", resp.StatusCode)
+			}
 		}
 		// Don't fail the entire scan if custom properties can't be fetched
-		// Return empty properties with a warning
+		// This might happen if:
+		// 1. The repository doesn't have custom properties configured
+		// 2. The token doesn't have sufficient permissions
+		// 3. The organization doesn't use custom properties
+		// 4. The repository is not part of an organization
 		return customProperties, nil
 	}
 
 	if c.verbose {
-		log.Printf("GitHub API: Repository %s/%s fetched (status: %d)", owner, repo, resp.StatusCode)
+		log.Printf("GitHub API: Successfully fetched %d custom properties for %s/%s", len(customPropertyValues), owner, repo)
 	}
 
-	if repository != nil {
-		// Method 1: Try to get custom properties from the official GitHub API
-		// Note: This requires the repository custom properties API to be available
-		customProperties = c.tryGetOfficialCustomProperties(owner, repo, properties)
-
-		// Method 2: Fall back to extracting from repository metadata (topics, naming conventions)
-		if len(customProperties) == 0 {
-			if c.verbose {
-				log.Printf("GitHub API: No official custom properties found, trying metadata extraction for %s/%s", owner, repo)
+	// Convert the API response to our expected format
+	// Create a map of all available custom properties first
+	allCustomProperties := make(map[string]string)
+	for _, prop := range customPropertyValues {
+		if prop.PropertyName != "" && prop.Value != nil {
+			// Convert the value to string representation
+			valueStr := ""
+			switch v := prop.Value.(type) {
+			case string:
+				valueStr = v
+			case bool:
+				if v {
+					valueStr = "true"
+				} else {
+					valueStr = "false"
+				}
+			case float64:
+				valueStr = fmt.Sprintf("%.0f", v)
+			case []interface{}:
+				// Handle array values by joining them
+				var strValues []string
+				for _, item := range v {
+					if str, ok := item.(string); ok {
+						strValues = append(strValues, str)
+					}
+				}
+				valueStr = strings.Join(strValues, ", ")
+			default:
+				valueStr = fmt.Sprintf("%v", v)
 			}
-			customProperties = c.extractCustomPropertiesFromMetadata(repository, properties)
+			allCustomProperties[prop.PropertyName] = valueStr
+			
+			if c.verbose {
+				log.Printf("GitHub API: Found custom property '%s' = '%s'", prop.PropertyName, valueStr)
+			}
 		}
+	}
 
-		if c.verbose {
-			log.Printf("Repository topics: %v", repository.Topics)
-			log.Printf("Repository language: %s", repository.GetLanguage())
-			log.Printf("Repository description: %s", repository.GetDescription())
+	// Filter to only include the requested properties
+	for _, propertyName := range properties {
+		if value, exists := allCustomProperties[propertyName]; exists {
+			customProperties[propertyName] = value
+		} else if c.verbose {
+			log.Printf("GitHub API: Requested custom property '%s' not found in repository %s/%s", propertyName, owner, repo)
 		}
 	}
 
 	if c.verbose {
-		log.Printf("GitHub API: Extracted custom properties for %s/%s: %v", owner, repo, customProperties)
+		log.Printf("GitHub API: Returning %d requested custom properties for %s/%s: %v", len(customProperties), owner, repo, customProperties)
 	}
 
 	return customProperties, nil
-}
-
-// tryGetOfficialCustomProperties attempts to fetch custom properties using the official GitHub API
-func (c *Client) tryGetOfficialCustomProperties(owner, repo string, properties []string) map[string]string {
-	customProperties := make(map[string]string)
-
-	// GitHub custom properties API is available for organizations
-	// Try the organization custom properties endpoint first
-	if c.verbose {
-		log.Printf("GitHub API: Attempting to fetch official custom properties for %s/%s", owner, repo)
-	}
-
-	// Note: As of 2024, the GitHub custom properties API is still evolving
-	// This is a placeholder for the official API implementation
-	// In practice, you would use the appropriate endpoint based on your GitHub version:
-	//
-	// For GitHub Enterprise Server 3.10+:
-	// GET /repos/{owner}/{repo}/properties
-	//
-	// For GitHub.com with organization custom properties:
-	// GET /orgs/{org}/properties
-	// GET /repos/{owner}/{repo}/custom-properties
-	//
-	// The exact endpoint and response format may vary based on your GitHub configuration
-
-	// TODO: Implement actual API calls when the go-github library supports custom properties
-	// For now, we return empty to fall back to metadata extraction
-
-	if c.verbose && len(customProperties) == 0 {
-		log.Printf("GitHub API: Official custom properties API not yet implemented, falling back to metadata extraction")
-	}
-
-	return customProperties
-}
-
-// extractCustomPropertiesFromMetadata extracts custom properties from repository metadata
-func (c *Client) extractCustomPropertiesFromMetadata(repository *github.Repository, properties []string) map[string]string {
-	customProperties := make(map[string]string)
-
-	if c.verbose {
-		log.Printf("GitHub API: Extracting custom properties from repository metadata (topics, naming conventions)")
-	}
-
-	// Extract properties from repository topics and naming conventions
-	// This approach works with current GitHub features and provides a practical solution
-	// until the official custom properties API is more widely available
-
-	for _, propertyName := range properties {
-		switch propertyName {
-		case "ProductId":
-			// Method 1: Extract from topics that start with "product-"
-			for _, topic := range repository.Topics {
-				if strings.HasPrefix(topic, "product-") {
-					customProperties[propertyName] = strings.TrimPrefix(topic, "product-")
-					if c.verbose {
-						log.Printf("GitHub API: Found ProductId '%s' from topic '%s'", customProperties[propertyName], topic)
-					}
-					break
-				}
-			}
-			// Method 2: Extract from repository description using patterns
-			if customProperties[propertyName] == "" {
-				desc := repository.GetDescription()
-				// Case-insensitive search for "product:" or "Product:"
-				descLower := strings.ToLower(desc)
-				if strings.Contains(descLower, "product:") {
-					// Look for "product: xyz" in description (case-insensitive)
-					parts := strings.Split(descLower, "product:")
-					if len(parts) > 1 {
-						// Extract the value after "product:", handling spaces and multiple values
-						valuesPart := strings.TrimSpace(parts[1])
-						productId := strings.Split(valuesPart, " ")[0]
-						productId = strings.TrimSpace(productId)
-						if productId != "" {
-							customProperties[propertyName] = productId
-							if c.verbose {
-								log.Printf("GitHub API: Found ProductId '%s' from description", productId)
-							}
-						}
-					}
-				}
-			}
-
-		case "Team":
-			// Method 1: Extract from topics that start with "team-"
-			for _, topic := range repository.Topics {
-				if strings.HasPrefix(topic, "team-") {
-					customProperties[propertyName] = strings.TrimPrefix(topic, "team-")
-					if c.verbose {
-						log.Printf("GitHub API: Found Team '%s' from topic '%s'", customProperties[propertyName], topic)
-					}
-					break
-				}
-			}
-			// Method 2: Extract from repository description using patterns
-			if customProperties[propertyName] == "" {
-				desc := repository.GetDescription()
-				// Case-insensitive search for "team:" or "Team:"
-				descLower := strings.ToLower(desc)
-				if strings.Contains(descLower, "team:") {
-					// Look for "team: xyz" in description (case-insensitive)
-					parts := strings.Split(descLower, "team:")
-					if len(parts) > 1 {
-						// Extract the value after "team:", handling spaces and multiple values
-						valuesPart := strings.TrimSpace(parts[1])
-						team := strings.Split(valuesPart, " ")[0]
-						team = strings.TrimSpace(team)
-						if team != "" {
-							customProperties[propertyName] = team
-							if c.verbose {
-								log.Printf("GitHub API: Found Team '%s' from description", team)
-							}
-						}
-					}
-				}
-			}
-
-		case "Environment":
-			// Method 1: Extract from repository name patterns
-			repoName := repository.GetName()
-			if strings.Contains(repoName, "-prod") {
-				customProperties[propertyName] = "production"
-			} else if strings.Contains(repoName, "-dev") {
-				customProperties[propertyName] = "development"
-			} else if strings.Contains(repoName, "-test") || strings.Contains(repoName, "-testing") {
-				customProperties[propertyName] = "testing"
-			} else if strings.Contains(repoName, "-stage") || strings.Contains(repoName, "-staging") {
-				customProperties[propertyName] = "staging"
-			}
-			
-			// Method 2: Extract from topics that start with "env-"
-			if customProperties[propertyName] == "" {
-				for _, topic := range repository.Topics {
-					if strings.HasPrefix(topic, "env-") {
-						customProperties[propertyName] = strings.TrimPrefix(topic, "env-")
-						if c.verbose {
-							log.Printf("GitHub API: Found Environment '%s' from topic '%s'", customProperties[propertyName], topic)
-						}
-						break
-					}
-				}
-			}
-			
-			if customProperties[propertyName] != "" && c.verbose {
-				log.Printf("GitHub API: Found Environment '%s' from repository name pattern", customProperties[propertyName])
-			}
-
-		default:
-			// For other properties, try generic extraction from topics and description
-			propertyKey := strings.ToLower(propertyName)
-			
-			// Look for topics in format "propertyname-value"
-			for _, topic := range repository.Topics {
-				if strings.HasPrefix(topic, propertyKey+"-") {
-					customProperties[propertyName] = strings.TrimPrefix(topic, propertyKey+"-")
-					if c.verbose {
-						log.Printf("GitHub API: Found custom property '%s' = '%s' from topic '%s'", propertyName, customProperties[propertyName], topic)
-					}
-					break
-				}
-			}
-			
-			// Look for "propertyname: value" in description
-			if customProperties[propertyName] == "" {
-				desc := strings.ToLower(repository.GetDescription())
-				searchPattern := propertyKey + ":"
-				if strings.Contains(desc, searchPattern) {
-					parts := strings.Split(desc, searchPattern)
-					if len(parts) > 1 {
-						value := strings.TrimSpace(strings.Split(parts[1], " ")[0])
-						if value != "" {
-							customProperties[propertyName] = value
-							if c.verbose {
-								log.Printf("GitHub API: Found custom property '%s' = '%s' from description", propertyName, value)
-							}
-						}
-					}
-				}
-			}
-			
-			if customProperties[propertyName] == "" && c.verbose {
-				log.Printf("GitHub API: Custom property '%s' not found in repository metadata", propertyName)
-			}
-		}
-	}
-
-	return customProperties
 }
