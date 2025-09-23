@@ -17,46 +17,93 @@ There may be bugs and incomplete features.
 
 - 🔍 **Repository Scanning**: Automatically scans all repositories for a GitHub owner/organization
 - 📋 **Workflow Analysis**: Parses `.github/workflows/*.yml` files to extract action dependencies
-- ⚡ **Version Management**: Identity actions and workflows that need updating based on rules
+- ⚡ **Version Management**: Identifies actions and workflows that need updating based on rules
 - 🏗️ **Location Migration**: Supports migration of actions to new repository locations with parameter transformation
-- 📊 **Detailed Reporting**: Comprehensive JSON output with statistics and issue summaries
-- 🔧 **Automated Updates**: Optionally creates pull requests with safe version updates
+- 📊 **Multi-Format Reporting**: Generate JSON reports and Jupyter notebooks for analysis
+- 🔧 **Automated Pull Requests**: Creates pull requests with safe version updates and custom templates
+- 🔄 **Modular Workflow**: Separate scan, report, and create-pr commands for flexible automation
 
 ## Installation
+
+### From Source
 
 ```bash
 git clone https://github.com/Jake-Mok-Nelson/actions-maintainer
 cd actions-maintainer
-go build -o actions-maintainer cmd/actions-maintainer/main.go
+make build
+```
+
+The binary will be created at `./bin/actions-maintainer`.
+
+### Using Go Install (Optional)
+
+```bash
+# Set GOPATH if needed
+export GOPATH=/path/to/your/go/workspace
+make install
 ```
 
 ## Usage
 
-### Basic Scanning
+The tool provides three main commands:
+
+### 1. Scan Command
 
 Scan all repositories for a GitHub user or organization:
 
 ```bash
-./actions-maintainer scan --owner github --token YOUR_GITHUB_TOKEN
+./bin/actions-maintainer scan --owner github --token YOUR_GITHUB_TOKEN
 ```
 
-### Save Results to File
+### 2. Report Command
+
+Generate formatted reports from scan results:
 
 ```bash
-./actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output results.json
+# Generate report from scan results
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output scan-results.json
+./bin/actions-maintainer report --input scan-results.json --output formatted-report.json
+
+# Or pipe directly
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN | ./bin/actions-maintainer report --output report.ipynb
 ```
 
-### Create Pull Requests for Updates
+### 3. Create Pull Requests
+
+Generate pull requests for action updates:
 
 ```bash
-./actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --create-prs
+# Create PRs from scan results
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output scan-results.json
+./bin/actions-maintainer create-pr --input scan-results.json --token YOUR_GITHUB_TOKEN
+
+# Or pipe directly
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN | ./bin/actions-maintainer create-pr --token YOUR_GITHUB_TOKEN
 ```
 
-### Using Environment Variable for Token
+### Common Options
+
+#### Save Results to File
+
+```bash
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output results.json
+```
+
+#### Using Environment Variable for Token
 
 ```bash
 export GITHUB_TOKEN=your_token_here
-./actions-maintainer scan --owner my-org
+./bin/actions-maintainer scan --owner my-org
+```
+
+#### Generate Jupyter Notebook Output
+
+```bash
+# From scan command directly
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output results.ipynb
+
+# From report command
+./bin/actions-maintainer report --input scan-results.json --output analysis.ipynb
 ```
 
 ## Authentication
@@ -83,9 +130,26 @@ For **private organizations**, ensure your token has:
 
 Use `--verbose` flag to see which endpoints are being used and troubleshoot access issues.
 
-## Output Format
+## Output Formats
 
-The tool outputs detailed JSON with the following structure:
+The tool supports multiple output formats:
+
+### JSON Format (Default)
+```bash
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output results.json
+./bin/actions-maintainer report --input results.json --output formatted.json
+```
+
+### Jupyter Notebook Format
+```bash
+# Generate notebook directly from scan
+./bin/actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --output analysis.ipynb
+
+# Or convert scan results to notebook  
+./bin/actions-maintainer report --input scan-results.json --output analysis.ipynb
+```
+
+The JSON output includes detailed structure:
 
 ```json
 {
@@ -109,6 +173,42 @@ The tool outputs detailed JSON with the following structure:
     "top_issues": [...]
   }
 }
+```
+
+## Command Workflow
+
+The tool is designed with a modular command structure to support different workflows:
+
+### 1. Scan → Analyze → Act Pattern
+
+```bash
+# Step 1: Scan repositories and save results
+./bin/actions-maintainer scan --owner my-org --token $GITHUB_TOKEN --output scan.json
+
+# Step 2: Generate formatted reports for analysis
+./bin/actions-maintainer report --input scan.json --output analysis.ipynb
+
+# Step 3: Create pull requests for updates
+./bin/actions-maintainer create-pr --input scan.json --token $GITHUB_TOKEN
+```
+
+### 2. Pipeline Pattern
+
+```bash
+# Scan and immediately create PRs
+./bin/actions-maintainer scan --owner my-org --token $GITHUB_TOKEN | \
+  ./bin/actions-maintainer create-pr --token $GITHUB_TOKEN
+
+# Scan and generate notebook analysis
+./bin/actions-maintainer scan --owner my-org --token $GITHUB_TOKEN | \
+  ./bin/actions-maintainer report --output analysis.ipynb
+```
+
+### 3. Custom Template Support
+
+```bash
+# Create PRs with custom template
+./bin/actions-maintainer create-pr --input scan.json --template custom-pr.tmpl --token $GITHUB_TOKEN
 ```
 
 ## Supported Issue Types
@@ -149,15 +249,15 @@ Uses traditional string-based version comparison for faster execution or when AP
 ## Architecture
 
 ```
-cmd/actions-maintainer/    # CLI entry point
+main.go                   # CLI entry point and command handling
 internal/
+├── actions/              # Action version management and rules  
+├── cache/                # In-memory caching with TTL
 ├── github/               # GitHub API client
-├── workflow/             # Workflow parsing and analysis
-├── actions/              # Action version management
+├── output/               # Multiple output format support (JSON, Jupyter)
 ├── patcher/              # Action transformation and location migration
-├── cache/                # SQLite caching with TTL
-├── output/               # JSON output formatting
-└── pr/                   # Pull request creation
+├── pr/                   # Pull request creation
+└── workflow/             # YAML workflow parsing and version resolution
 ```
 
 The `patcher/` package provides sophisticated transformation capabilities including:

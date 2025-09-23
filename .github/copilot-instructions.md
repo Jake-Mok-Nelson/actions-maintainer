@@ -23,15 +23,19 @@ Always reference these instructions first and only fallback to search or bash co
 - After building, the binary is available at `./bin/actions-maintainer`
 - Show help: `./bin/actions-maintainer`
 - Show scan command help: `./bin/actions-maintainer help scan`
+- Show report command help: `./bin/actions-maintainer help report`
+- Show create-pr command help: `./bin/actions-maintainer help create-pr`
 - Basic scan (requires GitHub token): `./bin/actions-maintainer scan --owner <owner> --token <token>`
 - Save output to file: `./bin/actions-maintainer scan --owner <owner> --token <token> --output results.json`
 - Save as Jupyter notebook: `./bin/actions-maintainer scan --owner <owner> --token <token> --output results.ipynb`
-- Create PRs for updates: `./bin/actions-maintainer scan --owner <owner> --token <token> --create-prs`
+- Generate formatted report: `./bin/actions-maintainer report --input results.json --output analysis.ipynb`
+- Create PRs for updates: `./bin/actions-maintainer create-pr --input results.json --token <token>`
 - Filter repositories: `./bin/actions-maintainer scan --owner <owner> --token <token> --filter "my-repos-.*"`
 - Use custom rules: `./bin/actions-maintainer scan --owner <owner> --token <token> --rules-file custom-rules.json`
 - Enable verbose logging: `./bin/actions-maintainer scan --owner <owner> --token <token> --verbose`
 - Target only workflows: `./bin/actions-maintainer scan --owner <owner> --token <token> --workflow-only`
 - Skip version resolution: `./bin/actions-maintainer scan --owner <owner> --token <token> --skip-resolution`
+- Custom PR templates: `./bin/actions-maintainer create-pr --input results.json --template custom.tmpl --token <token>`
 
 ### Install Binary
 - Set GOPATH if not set: `export GOPATH=/home/runner/go`
@@ -66,6 +70,12 @@ Since automated tests exist but may not cover all functionality, ALWAYS manually
    
    # Test invalid token
    ./bin/actions-maintainer scan --owner actions --token fake_token
+   
+   # Test report command with missing input
+   ./bin/actions-maintainer report --output test.json
+   
+   # Test create-pr command with missing token
+   ./bin/actions-maintainer create-pr --input fake.json
    ```
 
 3. **Build Validation**:
@@ -85,8 +95,14 @@ Since automated tests exist but may not cover all functionality, ALWAYS manually
    # Test JSON output (default)
    ./bin/actions-maintainer scan --owner actions --token fake_token --output results.json
    
-   # Test Jupyter notebook output
+   # Test Jupyter notebook output from scan
    ./bin/actions-maintainer scan --owner actions --token fake_token --output results.ipynb
+   
+   # Test report command JSON to JSON
+   ./bin/actions-maintainer report --input results.json --output formatted.json
+   
+   # Test report command JSON to notebook
+   ./bin/actions-maintainer report --input results.json --output analysis.ipynb
    ```
 
 6. **CLI Option Tests**:
@@ -104,14 +120,22 @@ Since automated tests exist but may not cover all functionality, ALWAYS manually
    ./bin/actions-maintainer scan --owner actions --token fake_token --skip-resolution
    ```
 
-7. **Transformation Testing** (requires valid token):
+7. **Command Integration Testing** (requires valid token):
    ```bash
+   # Test scan -> report pipeline
+   echo '{}' > fake-scan.json
+   ./bin/actions-maintainer report --input fake-scan.json --output test-report.json
+   
+   # Test scan -> create-pr pipeline  
+   ./bin/actions-maintainer create-pr --input fake-scan.json --token fake_token
+   
    # Test with custom rules file
    echo '{"version_rules": []}' > test-rules.json
    ./bin/actions-maintainer scan --owner actions --token real_token --rules-file test-rules.json
    
-   # Test PR creation (dry run simulation)
-   ./bin/actions-maintainer scan --owner actions --token fake_token --create-prs
+   # Test custom PR template
+   echo 'Custom template: {{.UpdateCount}} updates' > test-template.tmpl
+   ./bin/actions-maintainer create-pr --input fake-scan.json --template test-template.tmpl --token fake_token
    ```
 
 ### Expected Results
@@ -120,12 +144,15 @@ Since automated tests exist but may not cover all functionality, ALWAYS manually
 - Invalid token attempts API call but fails with HTTP 403 error, exits with code 0
 - Build produces binary of approximately 15,486,463 bytes on Linux (~15MB)
 - No output files are created when API calls fail
-- Tests pass: `make test` should show passing tests for actions, github, patcher, and workflow packages
+- Tests pass: `make test` should show passing tests for actions, github, patcher, pr, and workflow packages
 - JSON output format works when .json extension specified
 - Jupyter notebook format works when .ipynb extension specified  
 - CLI options are properly validated (missing required parameters show errors)
 - Verbose mode provides additional logging output
 - Repository filtering with regex patterns works as expected
+- Report command successfully converts scan JSON to various output formats
+- Create-pr command validates input JSON structure and token requirements
+- Pipeline operations work with stdin/stdout (scan | report, scan | create-pr)
 
 ### Required Validation Steps
 - ALWAYS run `make fmt` and `make lint` before committing changes

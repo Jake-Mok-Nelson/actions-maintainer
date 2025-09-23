@@ -1,0 +1,20 @@
+{
+  "owner": "",
+  "scan_time": "0001-01-01T00:00:00Z",
+  "scan_end_time": "0001-01-01T00:00:00Z",
+  "duration": 0,
+  "repositories": null,
+  "summary": {
+    "total_repositories": 0,
+    "total_workflow_files": 0,
+    "total_actions": 0,
+    "total_regular_actions": 0,
+    "total_reusable_workflows": 0,
+    "unique_actions": null,
+    "unique_regular_actions": null,
+    "unique_reusable_workflows": null,
+    "issues_by_type": null,
+    "issues_by_severity": null,
+    "top_issues": null
+  }
+}
