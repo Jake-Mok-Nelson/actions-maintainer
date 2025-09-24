@@ -822,3 +822,230 @@ Other: {{ len .OtherUpdates }}`
 		t.Errorf("Expected:\n%s\nGot:\n%s", expected, body)
 	}
 }
+
+// TestParseMigrationTarget tests the parseMigrationTarget function
+func TestParseMigrationTarget(t *testing.T) {
+	tests := []struct {
+		name           string
+		migrationTarget string
+		expectedRepo   string
+		expectedVersion string
+	}{
+		{
+			name:           "Valid migration target",
+			migrationTarget: "new-org/action@v2",
+			expectedRepo:   "new-org/action",
+			expectedVersion: "v2",
+		},
+		{
+			name:           "Valid migration target with path",
+			migrationTarget: "new-org/workflows/.github/workflows/ci.yml@v2",
+			expectedRepo:   "new-org/workflows",
+			expectedVersion: "v2",
+		},
+		{
+			name:           "Empty migration target",
+			migrationTarget: "",
+			expectedRepo:   "",
+			expectedVersion: "",
+		},
+		{
+			name:           "Invalid format",
+			migrationTarget: "invalid-format",
+			expectedRepo:   "",
+			expectedVersion: "",
+		},
+		{
+			name:           "Missing version",
+			migrationTarget: "new-org/action",
+			expectedRepo:   "",
+			expectedVersion: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, version := parseMigrationTarget(tt.migrationTarget)
+			if repo != tt.expectedRepo {
+				t.Errorf("Expected repo '%s', got '%s'", tt.expectedRepo, repo)
+			}
+			if version != tt.expectedVersion {
+				t.Errorf("Expected version '%s', got '%s'", tt.expectedVersion, version)
+			}
+		})
+	}
+}
+
+// TestPlanUpdates_WithMigrations tests that migration issues are properly handled
+func TestPlanUpdates_WithMigrations(t *testing.T) {
+	repositories := []output.RepositoryResult{
+		{
+			Name:          "test-repo",
+			FullName:      "testowner/test-repo",
+			DefaultBranch: "main",
+			Issues: []output.ActionIssue{
+				{
+					Repository:      "legacy-org/deprecated-action",
+					CurrentVersion:  "v1",
+					MigrationTarget: "modern-org/recommended-action@v2",
+					FilePath:        ".github/workflows/ci.yml",
+					IssueType:       "migration",
+					Severity:        "medium",
+					Description:     "Action has migrated to modern-org/recommended-action",
+				},
+				{
+					Repository:       "actions/checkout",
+					CurrentVersion:   "v3",
+					SuggestedVersion: "v4",
+					FilePath:         ".github/workflows/ci.yml",
+					IssueType:        "outdated",
+					Severity:         "low",
+				},
+			},
+		},
+	}
+
+	plans := PlanUpdates(repositories)
+
+	if len(plans) != 1 {
+		t.Fatalf("Expected 1 plan, got %d", len(plans))
+	}
+
+	plan := plans[0]
+	if len(plan.Updates) != 2 {
+		t.Fatalf("Expected 2 updates, got %d", len(plan.Updates))
+	}
+
+	// Find migration update
+	var migrationUpdate *ActionUpdate
+	for i := range plan.Updates {
+		if plan.Updates[i].Issue.IssueType == "migration" {
+			migrationUpdate = &plan.Updates[i]
+			break
+		}
+	}
+
+	if migrationUpdate == nil {
+		t.Fatal("Expected to find migration update")
+	}
+
+	// Verify migration fields
+	if migrationUpdate.ActionRepo != "legacy-org/deprecated-action" {
+		t.Errorf("Expected ActionRepo 'legacy-org/deprecated-action', got '%s'", migrationUpdate.ActionRepo)
+	}
+	if migrationUpdate.TargetRepo != "modern-org/recommended-action" {
+		t.Errorf("Expected TargetRepo 'modern-org/recommended-action', got '%s'", migrationUpdate.TargetRepo)
+	}
+	if migrationUpdate.TargetVersion != "v2" {
+		t.Errorf("Expected TargetVersion 'v2', got '%s'", migrationUpdate.TargetVersion)
+	}
+	if migrationUpdate.CurrentVersion != "v1" {
+		t.Errorf("Expected CurrentVersion 'v1', got '%s'", migrationUpdate.CurrentVersion)
+	}
+}
+
+// TestUpdateWorkflowContent_WithMigrations tests workflow content updates with repository migrations
+func TestUpdateWorkflowContent_WithMigrations(t *testing.T) {
+	content := `name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: legacy-org/deprecated-action@v1
+        with:
+          token: ${{ secrets.TOKEN }}
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v2
+`
+
+	updates := []ActionUpdate{
+		{
+			ActionRepo:     "legacy-org/deprecated-action",
+			CurrentVersion: "v1",
+			TargetRepo:     "modern-org/recommended-action",
+			TargetVersion:  "v2",
+			Issue:          output.ActionIssue{IssueType: "migration"},
+		},
+		{
+			ActionRepo:     "actions/checkout",
+			CurrentVersion: "v3",
+			TargetVersion:  "v4",
+			Issue:          output.ActionIssue{IssueType: "outdated"},
+		},
+	}
+
+	updatedContent := UpdateWorkflowContent(content, updates)
+
+	// Check that migration was applied
+	if !strings.Contains(updatedContent, "modern-org/recommended-action@v2") {
+		t.Error("Expected migration to modern-org/recommended-action@v2")
+	}
+	if strings.Contains(updatedContent, "legacy-org/deprecated-action@v1") {
+		t.Error("Expected legacy-org/deprecated-action@v1 to be replaced")
+	}
+
+	// Check that regular update was applied
+	if !strings.Contains(updatedContent, "actions/checkout@v4") {
+		t.Error("Expected actions/checkout to be updated to v4")
+	}
+	if strings.Contains(updatedContent, "actions/checkout@v3") {
+		t.Error("Expected actions/checkout@v3 to be replaced")
+	}
+
+	t.Logf("Updated content:\n%s", updatedContent)
+}
+
+// TestGenerateDefaultPRBody_WithMigrations tests PR body generation with migrations
+func TestGenerateDefaultPRBody_WithMigrations(t *testing.T) {
+	creator := &Creator{}
+	
+	plan := UpdatePlan{
+		Repository: github.Repository{
+			Name:     "test-repo",
+			FullName: "testowner/test-repo",
+		},
+		Updates: []ActionUpdate{
+			{
+				ActionRepo:     "legacy-org/deprecated-action",
+				CurrentVersion: "v1",
+				TargetRepo:     "modern-org/recommended-action",
+				TargetVersion:  "v2",
+				FilePath:       ".github/workflows/ci.yml",
+				Issue: output.ActionIssue{
+					IssueType:   "migration",
+					Description: "Action has migrated to modern-org/recommended-action",
+				},
+			},
+			{
+				ActionRepo:     "actions/checkout",
+				CurrentVersion: "v3",
+				TargetVersion:  "v4",
+				FilePath:       ".github/workflows/ci.yml",
+				Issue: output.ActionIssue{
+					IssueType: "outdated",
+				},
+			},
+		},
+	}
+
+	body := creator.generateDefaultPRBody(plan)
+
+	// Check for migration section
+	if !strings.Contains(body, "### 🚀 Action Migrations") {
+		t.Error("Expected migration section in PR body")
+	}
+	if !strings.Contains(body, "legacy-org/deprecated-action@v1` → `modern-org/recommended-action@v2") {
+		t.Error("Expected migration details in PR body")
+	}
+
+	// Check for outdated section
+	if !strings.Contains(body, "### 📊 Version Updates") {
+		t.Error("Expected version updates section in PR body")
+	}
+	if !strings.Contains(body, "actions/checkout**: v3 → v4") {
+		t.Error("Expected version update details in PR body")
+	}
+
+	t.Logf("Generated PR body:\n%s", body)
+}
