@@ -826,39 +826,39 @@ Other: {{ len .OtherUpdates }}`
 // TestParseMigrationTarget tests the parseMigrationTarget function
 func TestParseMigrationTarget(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		migrationTarget string
-		expectedRepo   string
+		expectedRepo    string
 		expectedVersion string
 	}{
 		{
-			name:           "Valid migration target",
+			name:            "Valid migration target",
 			migrationTarget: "new-org/action@v2",
-			expectedRepo:   "new-org/action",
+			expectedRepo:    "new-org/action",
 			expectedVersion: "v2",
 		},
 		{
-			name:           "Valid migration target with path",
+			name:            "Valid migration target with path",
 			migrationTarget: "new-org/workflows/.github/workflows/ci.yml@v2",
-			expectedRepo:   "new-org/workflows",
+			expectedRepo:    "new-org/workflows",
 			expectedVersion: "v2",
 		},
 		{
-			name:           "Empty migration target",
+			name:            "Empty migration target",
 			migrationTarget: "",
-			expectedRepo:   "",
+			expectedRepo:    "",
 			expectedVersion: "",
 		},
 		{
-			name:           "Invalid format",
+			name:            "Invalid format",
 			migrationTarget: "invalid-format",
-			expectedRepo:   "",
+			expectedRepo:    "",
 			expectedVersion: "",
 		},
 		{
-			name:           "Missing version",
+			name:            "Missing version",
 			migrationTarget: "new-org/action",
-			expectedRepo:   "",
+			expectedRepo:    "",
 			expectedVersion: "",
 		},
 	}
@@ -999,7 +999,7 @@ jobs:
 // TestGenerateDefaultPRBody_WithMigrations tests PR body generation with migrations
 func TestGenerateDefaultPRBody_WithMigrations(t *testing.T) {
 	creator := &Creator{}
-	
+
 	plan := UpdatePlan{
 		Repository: github.Repository{
 			Name:     "test-repo",

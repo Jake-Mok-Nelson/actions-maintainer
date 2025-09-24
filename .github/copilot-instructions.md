@@ -4,6 +4,17 @@ The actions-maintainer is a Go CLI tool that identifies and helps resolve TOIL a
 
 Always reference these instructions first and only fallback to search or bash commands when you encounter unexpected information that does not match what is documented here.
 
+## Documentation Maintenance
+
+**IMPORTANT**: When making significant changes to functionality, features, or capabilities, ALWAYS update the README.md file to reflect the changes. This includes:
+- New features or capabilities added to the tool
+- Changes to existing functionality
+- New command-line options or usage patterns
+- Updated architecture or system behavior
+- New supported issue types or analysis capabilities
+
+The README.md should always accurately represent the current state of the tool and its capabilities.
+
 ## Working Effectively
 
 ### Bootstrap and Build the Repository
