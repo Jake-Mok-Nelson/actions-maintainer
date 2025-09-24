@@ -18,9 +18,9 @@ There may be bugs and incomplete features.
 - 🔍 **Repository Scanning**: Automatically scans all repositories for a GitHub owner/organization
 - 📋 **Workflow Analysis**: Parses `.github/workflows/*.yml` files to extract action dependencies
 - ⚡ **Version Management**: Identity actions and workflows that need updating based on rules
-- 🏗️ **Location Migration**: Supports migration of actions to new repository locations with parameter transformation
+- 🏗️ **Location Migration**: Complete migration support from detection to automated PR creation for actions moving repositories
 - 📊 **Detailed Reporting**: Comprehensive JSON output with statistics and issue summaries
-- 🔧 **Automated Updates**: Optionally creates pull requests with safe version updates
+- 🔧 **Automated Updates**: Creates pull requests with safe version updates and repository migrations
 
 ## Installation
 
@@ -48,9 +48,17 @@ Scan all repositories for a GitHub user or organization:
 
 ### Create Pull Requests for Updates
 
+Create automated pull requests for all detected action updates and migrations:
+
 ```bash
 ./actions-maintainer scan --owner my-org --token YOUR_GITHUB_TOKEN --create-prs
 ```
+
+This will:
+- Create separate PRs for each repository with action updates
+- Handle both version updates and repository migrations in the same PR
+- Include detailed descriptions with migration reasoning
+- Apply any necessary parameter transformations during migrations
 
 ### Using Environment Variable for Token
 
@@ -115,6 +123,7 @@ The tool outputs detailed JSON with the following structure:
 
 - **Outdated**: Action versions that are behind the latest release
 - **Deprecated**: Action versions that are no longer supported
+- **Migration**: Actions that have moved to new repository locations
 - **Security**: Action versions with known security vulnerabilities
 
 ## Version Alias Resolution
@@ -276,6 +285,52 @@ Location migration rules are defined in the patcher's rule system with both sour
 ```
 
 This enables the tool to handle complex migration scenarios where actions not only change versions but also move to new locations with different parameter schemas.
+
+## Automated Migration Pull Requests
+
+When repository migrations are detected, the PR creation system automatically handles the complete migration process:
+
+### Migration Detection to PR Creation
+
+1. **Detection**: The action analysis system identifies when actions have migrated to new repositories
+2. **Planning**: Migration targets are parsed and validated from the detection results
+3. **Workflow Updates**: YAML workflow files are updated to use the new repository locations
+4. **PR Creation**: Dedicated pull requests are created with detailed migration information
+
+### PR Content for Migrations
+
+Pull requests that include migrations feature a dedicated "🚀 Action Migrations" section:
+
+```markdown
+### 🚀 Action Migrations
+
+- **legacy-org/deprecated-action**: `legacy-org/deprecated-action@v1` → `modern-org/recommended-action@v2`
+  - **File**: `.github/workflows/ci.yml`
+  - **Reason**: Action has migrated to modern-org/recommended-action for better maintenance
+
+### 📊 Version Updates
+
+- **actions/checkout**: v3 → v4
+  - **File**: `.github/workflows/ci.yml`
+```
+
+### Example Migration Workflow
+
+Before migration:
+```yaml
+- uses: legacy-org/deprecated-action@v1
+  with:
+    token: ${{ secrets.TOKEN }}
+```
+
+After migration:
+```yaml
+- uses: modern-org/recommended-action@v2
+  with:
+    token: ${{ secrets.TOKEN }}
+```
+
+The system ensures that both repository changes and version updates are applied correctly, with parameter transformations when needed.
 
 ## Documentation
 

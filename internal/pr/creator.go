@@ -12,6 +12,25 @@ import (
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/patcher"
 )
 
+// parseMigrationTarget parses a migration target string (e.g., "new-org/action@v2")
+// Returns the repository and version parts, or empty strings if not a migration target
+func parseMigrationTarget(migrationTarget string) (string, string) {
+	if migrationTarget == "" {
+		return "", ""
+	}
+
+	// Regular expression to parse migration target
+	// Supports: owner/repo@version, owner/repo/path@version
+	re := regexp.MustCompile(`^([^/@]+/[^/@]+)(?:/[^@]*)?@(.+)$`)
+	matches := re.FindStringSubmatch(migrationTarget)
+
+	if len(matches) != 3 {
+		return "", "" // Invalid format
+	}
+
+	return matches[1], matches[2]
+}
+
 // Creator handles creating pull requests for action updates
 type Creator struct {
 	githubClient *github.Client
@@ -34,6 +53,7 @@ type ActionUpdate struct {
 	ActionRepo     string
 	CurrentVersion string
 	TargetVersion  string
+	TargetRepo     string // Target repository for migrations (empty if same repo)
 	Issue          output.ActionIssue
 }
 
@@ -44,6 +64,7 @@ type TemplateData struct {
 	UpdateCount       int
 	DeprecatedUpdates []ActionUpdate
 	OutdatedUpdates   []ActionUpdate
+	MigrationUpdates  []ActionUpdate
 	SecurityUpdates   []ActionUpdate
 	OtherUpdates      []ActionUpdate
 }
@@ -154,6 +175,7 @@ func (c *Creator) generatePRBodyFromTemplate(plan UpdatePlan) string {
 	// Group updates by issue type
 	deprecatedUpdates := []ActionUpdate{}
 	outdatedUpdates := []ActionUpdate{}
+	migrationUpdates := []ActionUpdate{}
 	securityUpdates := []ActionUpdate{}
 	otherUpdates := []ActionUpdate{}
 
@@ -163,6 +185,8 @@ func (c *Creator) generatePRBodyFromTemplate(plan UpdatePlan) string {
 			deprecatedUpdates = append(deprecatedUpdates, update)
 		case "outdated":
 			outdatedUpdates = append(outdatedUpdates, update)
+		case "migration":
+			migrationUpdates = append(migrationUpdates, update)
 		case "security":
 			securityUpdates = append(securityUpdates, update)
 		default:
@@ -177,6 +201,7 @@ func (c *Creator) generatePRBodyFromTemplate(plan UpdatePlan) string {
 		UpdateCount:       len(plan.Updates),
 		DeprecatedUpdates: deprecatedUpdates,
 		OutdatedUpdates:   outdatedUpdates,
+		MigrationUpdates:  migrationUpdates,
 		SecurityUpdates:   securityUpdates,
 		OtherUpdates:      otherUpdates,
 	}
@@ -201,6 +226,7 @@ func (c *Creator) generateDefaultPRBody(plan UpdatePlan) string {
 	// Group updates by issue type
 	deprecatedUpdates := []ActionUpdate{}
 	outdatedUpdates := []ActionUpdate{}
+	migrationUpdates := []ActionUpdate{}
 
 	for _, update := range plan.Updates {
 		switch update.Issue.IssueType {
@@ -208,6 +234,27 @@ func (c *Creator) generateDefaultPRBody(plan UpdatePlan) string {
 			deprecatedUpdates = append(deprecatedUpdates, update)
 		case "outdated":
 			outdatedUpdates = append(outdatedUpdates, update)
+		case "migration":
+			migrationUpdates = append(migrationUpdates, update)
+		}
+	}
+
+	// Migration updates section
+	if len(migrationUpdates) > 0 {
+		body.WriteString("### 🚀 Action Migrations\n\n")
+		for _, update := range migrationUpdates {
+			if update.TargetRepo != "" {
+				body.WriteString(fmt.Sprintf("- **%s**: `%s@%s` → `%s@%s`\n",
+					update.ActionRepo, update.ActionRepo, update.CurrentVersion, update.TargetRepo, update.TargetVersion))
+			} else {
+				body.WriteString(fmt.Sprintf("- **%s**: %s → %s\n",
+					update.ActionRepo, update.CurrentVersion, update.TargetVersion))
+			}
+			body.WriteString(fmt.Sprintf("  - **File**: `%s`\n", update.FilePath))
+			if update.Issue.Description != "" {
+				body.WriteString(fmt.Sprintf("  - **Reason**: %s\n", update.Issue.Description))
+			}
+			body.WriteString("\n")
 		}
 	}
 
@@ -270,15 +317,30 @@ func PlanUpdates(repositories []output.RepositoryResult) []UpdatePlan {
 		// Collect ALL issues for this repository into a single plan
 		// This ensures patches are never split across multiple PRs for the same repository
 		for _, issue := range repo.Issues {
-			if issue.SuggestedVersion == "" {
-				continue // Skip issues without suggested fixes
+			var targetVersion, targetRepo string
+
+			// Handle migration cases
+			if issue.IssueType == "migration" && issue.MigrationTarget != "" {
+				// Parse migration target to get target repository and version
+				targetRepo, targetVersion = parseMigrationTarget(issue.MigrationTarget)
+				if targetRepo == "" || targetVersion == "" {
+					continue // Skip malformed migration targets
+				}
+			} else {
+				// Handle regular version updates
+				if issue.SuggestedVersion == "" {
+					continue // Skip issues without suggested fixes
+				}
+				targetVersion = issue.SuggestedVersion
+				targetRepo = "" // Same repository
 			}
 
 			update := ActionUpdate{
 				FilePath:       issue.FilePath,
 				ActionRepo:     issue.Repository,
 				CurrentVersion: issue.CurrentVersion,
-				TargetVersion:  issue.SuggestedVersion,
+				TargetVersion:  targetVersion,
+				TargetRepo:     targetRepo,
 				Issue:          issue,
 			}
 
@@ -316,7 +378,15 @@ func UpdateWorkflowContent(content string, updates []ActionUpdate) string {
 	for _, update := range updates {
 		// Create pattern to match the action reference
 		oldRef := fmt.Sprintf("%s@%s", update.ActionRepo, update.CurrentVersion)
-		newRef := fmt.Sprintf("%s@%s", update.ActionRepo, update.TargetVersion)
+
+		var newRef string
+		if update.TargetRepo != "" {
+			// Migration case: change repository and version
+			newRef = fmt.Sprintf("%s@%s", update.TargetRepo, update.TargetVersion)
+		} else {
+			// Regular version update: same repository, new version
+			newRef = fmt.Sprintf("%s@%s", update.ActionRepo, update.TargetVersion)
+		}
 
 		// Use regex to safely replace action references
 		pattern := regexp.MustCompile(regexp.QuoteMeta(oldRef))
