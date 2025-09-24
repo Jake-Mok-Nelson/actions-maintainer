@@ -20,10 +20,22 @@ import (
 	"github.com/Jake-Mok-Nelson/actions-maintainer/internal/workflow"
 )
 
+// version can be set via ldflags during build: -X main.version=1.2.3
+var version string
+
+// getVersion returns the version string, providing a fallback for go install
+func getVersion() string {
+	if version != "" {
+		return version
+	}
+	// Fallback for go install - use "dev" to indicate development build
+	return "dev"
+}
+
 func main() {
 	cli := climax.New("actions-maintainer")
 	cli.Brief = "GitHub Actions maintenance tool"
-	cli.Version = "0.1.0"
+	cli.Version = getVersion()
 
 	// Main scan command
 	scanCmd := climax.Command{
