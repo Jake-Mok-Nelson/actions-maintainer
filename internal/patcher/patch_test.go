@@ -136,7 +136,7 @@ func createPatcherWithMigrationRules() *Patcher {
 	return patcher
 }
 
-// TestBasicPatchOperations tests the basic patch operations
+// TestBasicPatchOperations tests the basic patch operations with default rules loaded
 func TestBasicPatchOperations(t *testing.T) {
 	patcher := NewPatcher()
 
@@ -152,8 +152,9 @@ func TestBasicPatchOperations(t *testing.T) {
 		t.Fatalf("Failed to build patch: %v", err)
 	}
 
+	// With default rules loaded, patches should be applied for checkout v3->v4
 	if !patch.Applied {
-		t.Log("No patches were applied for checkout v3->v4, which is expected")
+		t.Error("Expected patches to be applied for checkout v3->v4 with default rules loaded")
 		return
 	}
 
@@ -324,52 +325,17 @@ func TestNilWithBlock(t *testing.T) {
 func TestGetSupportedActions(t *testing.T) {
 	wp := NewWorkflowPatcher()
 
-	// Since default rules are no longer loaded, there should be no supported actions initially
+	// With default rules loaded, we should have some supported actions
 	actions := wp.GetSupportedActions()
-	if len(actions) != 0 {
-		t.Errorf("Expected no supported actions by default (no rules loaded), got %d", len(actions))
+	if len(actions) == 0 {
+		t.Error("Expected some supported actions with default rules loaded, got 0")
+		return
 	}
 
-	// Now add some custom rules and check that they show up
-	checkoutRule := ActionPatchRule{
-		Repository: "actions/checkout",
-		VersionPatches: []VersionPatch{
-			{
-				FromVersion: "v1",
-				ToVersion:   "v4",
-				Description: "Test rule",
-				Patches:     []FieldPatch{},
-			},
-		},
-	}
+	t.Logf("Found %d supported actions with default rules: %v", len(actions), actions)
 
-	setupNodeRule := ActionPatchRule{
-		Repository: "actions/setup-node",
-		VersionPatches: []VersionPatch{
-			{
-				FromVersion: "v2",
-				ToVersion:   "v4",
-				Description: "Test rule",
-				Patches:     []FieldPatch{},
-			},
-		},
-	}
-
-	wp.patcher.AddPatchRule(checkoutRule)
-	wp.patcher.AddPatchRule(setupNodeRule)
-
-	// Now we should have 2 supported actions
-	actions = wp.GetSupportedActions()
-	if len(actions) != 2 {
-		t.Errorf("Expected 2 supported actions after adding rules, got %d", len(actions))
-	}
-
-	// Check for the expected actions
-	expectedActions := []string{
-		"actions/checkout",
-		"actions/setup-node",
-	}
-
+	// Verify that common actions are included
+	expectedActions := []string{"actions/checkout", "actions/setup-node"}
 	for _, expected := range expectedActions {
 		found := false
 		for _, action := range actions {
@@ -379,11 +345,66 @@ func TestGetSupportedActions(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("Expected action %s to be supported after adding rule", expected)
+			t.Errorf("Expected to find %s in supported actions, but it was missing", expected)
 		}
 	}
+}
 
-	t.Logf("Found %d supported actions: %v", len(actions), actions)
+// TestNewCustomPatcher tests the new function for creating a patcher without default rules
+func TestNewCustomPatcher(t *testing.T) {
+	// Test NewCustomPatcher creates a patcher with no default rules
+	patcher := NewCustomPatcher()
+
+	// Should have no rules initially
+	rules := patcher.GetPatchRules()
+	if len(rules) != 0 {
+		t.Errorf("Expected no rules in custom patcher, got %d", len(rules))
+	}
+
+	// Test that no patches are applied for common actions without rules
+	withBlock := map[string]interface{}{
+		"fetch-depth": 0,
+		"token":       "${{ secrets.GITHUB_TOKEN }}",
+	}
+
+	patch, err := patcher.BuildPatch("actions/checkout", "v3", "v4", withBlock)
+	if err != nil {
+		t.Fatalf("Failed to build patch: %v", err)
+	}
+
+	if patch.Applied {
+		t.Error("Expected no patches to be applied in custom patcher without rules")
+	}
+
+	// Test that we can add custom rules
+	customRule := ActionPatchRule{
+		Repository: "my-org/custom-action",
+		VersionPatches: []VersionPatch{
+			{
+				FromVersion: "v1",
+				ToVersion:   "v2",
+				Description: "Custom test rule",
+				Patches: []FieldPatch{
+					{
+						Operation: OperationAdd,
+						Field:     "new-param",
+						Value:     "test-value",
+						Reason:    "Test parameter addition",
+					},
+				},
+			},
+		},
+	}
+
+	patcher.AddPatchRule(customRule)
+
+	// Should now have one rule
+	rules = patcher.GetPatchRules()
+	if len(rules) != 1 {
+		t.Errorf("Expected 1 rule after adding custom rule, got %d", len(rules))
+	}
+
+	t.Log("NewCustomPatcher working correctly - no default rules, can add custom rules")
 }
 
 // TestLocationMigration tests migration of actions to new repository locations

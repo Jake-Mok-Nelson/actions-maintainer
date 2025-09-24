@@ -99,15 +99,23 @@ type Patcher struct {
 	rules map[string]ActionPatchRule // repository -> rules
 }
 
-// NewPatcher creates a new patcher with no default rules
+// NewPatcher creates a new patcher with default rules loaded
 func NewPatcher() *Patcher {
 	patcher := &Patcher{
 		rules: make(map[string]ActionPatchRule),
 	}
 
-	// No default patch rules loaded - only custom rules can be added
+	// Load default patch rules for common GitHub Actions
+	patcher.loadDefaultRules()
 
 	return patcher
+}
+
+// NewCustomPatcher creates a new patcher with no default rules (only custom rules can be added)
+func NewCustomPatcher() *Patcher {
+	return &Patcher{
+		rules: make(map[string]ActionPatchRule),
+	}
 }
 
 // BuildPatch builds a patch for upgrading an action from one version to another
