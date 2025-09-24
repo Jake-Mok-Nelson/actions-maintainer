@@ -24,11 +24,26 @@ There may be bugs and incomplete features.
 
 ## Installation
 
+### Option 1: Install from source with go install (recommended)
+
+```bash
+go install github.com/Jake-Mok-Nelson/actions-maintainer@latest
+```
+
+This will install the latest released version to your `$GOPATH/bin` directory.
+
+### Option 2: Build from source
+
 ```bash
 git clone https://github.com/Jake-Mok-Nelson/actions-maintainer
 cd actions-maintainer
-go build -o actions-maintainer cmd/actions-maintainer/main.go
+make build
+# Binary will be available at ./bin/actions-maintainer
 ```
+
+### Option 3: Download pre-built binaries
+
+Download the latest binaries from the [releases page](https://github.com/Jake-Mok-Nelson/actions-maintainer/releases).
 
 ## Usage
 
