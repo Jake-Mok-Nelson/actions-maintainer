@@ -1,0 +1,31 @@
+# Workflow migration example - AFTER
+# Shows the same workflow call migrated to new repository with enhanced features
+
+name: Deploy Application
+on: 
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    # UPDATED: Calling workflow from new centralized repository
+    uses: new-company/central-workflows/.github/workflows/enhanced-deploy.yml@v2
+    with:
+      environment: production
+      app-name: my-application
+      version: ${{ github.sha }}
+      # NEW: Enhanced security features available in v2
+      security-scan: true
+      compliance-check: true
+      # NEW: Notification options
+      notification-webhook: ${{ secrets.DEPLOY_WEBHOOK }}
+    secrets:
+      DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      # NEW: Additional secrets for enhanced features
+      SECURITY_TOKEN: ${{ secrets.SECURITY_TOKEN }}
+      
+  notify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Enhanced deployment completed with security checks"

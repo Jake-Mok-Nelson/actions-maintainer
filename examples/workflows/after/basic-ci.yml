@@ -1,0 +1,57 @@
+# Basic CI workflow - AFTER actions-maintainer updates
+# This workflow uses latest action versions with optimized configurations
+
+name: CI
+on: 
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # UPDATED: actions/checkout@v4 with explicit fetch-depth for performance
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for better performance
+          fetch-tags: false  # Don't fetch tags unless needed
+      
+      # UPDATED: actions/setup-node@v4 with built-in caching (no separate cache action needed)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'  # Parameter renamed from 'version' to 'node-version'
+          cache: 'npm'        # Built-in caching replaces separate cache action
+          
+      # REMOVED: No longer need separate actions/cache action with setup-node v4
+      
+      - run: npm ci
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest  
+    needs: test
+    steps:
+      # UPDATED: actions/checkout@v4 with explicit fetch-depth
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+      
+      # UPDATED: actions/setup-node@v4 with built-in caching
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - run: npm ci
+      - run: npm run build
+      
+      # UPDATED: actions/upload-artifact@v4 with new parameters
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+          compression-level: 6  # Optional: control artifact compression
+          overwrite: false      # Required in v4: explicit overwrite setting

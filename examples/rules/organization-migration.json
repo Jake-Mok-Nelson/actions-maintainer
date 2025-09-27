@@ -1,0 +1,76 @@
+{
+  "_comment": "Organization migration rules for actions moving between GitHub organizations",
+  "_description": "Use this when actions have moved from one organization to another, requiring both repository location changes and version updates.",
+
+  "migration_rules": [
+    {
+      "_comment": "Example: Action moved from legacy-org to modern-org",
+      "from_repository": "legacy-org/deprecated-action",
+      "to_repository": "modern-org/recommended-action", 
+      "to_version": "v2.0.0",
+      "recommendation": "Action has been migrated to modern-org/recommended-action for better maintenance and enhanced features"
+    },
+    {
+      "_comment": "Example: Community action moved to official GitHub Actions org", 
+      "from_repository": "community/setup-tool",
+      "to_repository": "actions/setup-tool",
+      "to_version": "v1.0.0",
+      "recommendation": "Community action officially adopted by GitHub Actions team with long-term support guarantees"
+    },
+    {
+      "_comment": "Example: Third-party action moved to new maintainer",
+      "from_repository": "old-maintainer/useful-action", 
+      "to_repository": "new-maintainer/useful-action",
+      "to_version": "v3.1.0",
+      "recommendation": "Action maintenance transferred to new-maintainer with continued development and security updates"
+    }
+  ],
+
+  "version_rules": [
+    {
+      "_comment": "Force migration from legacy-org actions (mark as deprecated)",
+      "repository": "legacy-org/deprecated-action",
+      "latest_version": "v1.5.0",
+      "deprecated_versions": ["v1.0.0", "v1.1.0", "v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0"],
+      "migrate_to_repository": "modern-org/recommended-action",
+      "migrate_to_version": "v2.0.0", 
+      "recommendation": "ALL versions of legacy-org/deprecated-action are deprecated. Migrate to modern-org/recommended-action v2.0.0"
+    },
+    {
+      "_comment": "Community action that moved to official organization",
+      "repository": "community/setup-tool",
+      "latest_version": "v2.1.0",
+      "deprecated_versions": ["v1.0.0", "v1.1.0", "v1.2.0", "v2.0.0", "v2.1.0"],
+      "migrate_to_repository": "actions/setup-tool", 
+      "migrate_to_version": "v1.0.0",
+      "recommendation": "Community maintained action moved to official GitHub Actions organization for long-term support"
+    }
+  ],
+
+  "_transformation_examples": {
+    "_comment": "These transformations will be applied automatically during migration",
+    "legacy_to_modern": {
+      "before": {
+        "uses": "legacy-org/deprecated-action@v1",
+        "with": {
+          "old-param": "value",
+          "legacy-flag": true
+        }
+      },
+      "after": {
+        "uses": "modern-org/recommended-action@v2",
+        "with": {
+          "new-param": "value",
+          "enhanced-features": true,
+          "migration-notice": "Migrated from legacy-org/deprecated-action"
+        }
+      }
+    }
+  },
+
+  "_usage_examples": {
+    "organization_migration": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/organization-migration.json --create-prs",
+    "dry_run_migration": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/organization-migration.json --verbose",
+    "filter_legacy_repos": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/organization-migration.json --filter 'legacy-.*' --create-prs"
+  }
+}

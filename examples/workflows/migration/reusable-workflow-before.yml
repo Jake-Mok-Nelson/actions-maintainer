@@ -1,0 +1,24 @@
+# Workflow migration example - BEFORE
+# Shows a reusable workflow call that needs to be migrated to a new repository
+
+name: Deploy Application
+on: 
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    # OLD: Calling workflow from old organization
+    uses: old-company/shared-workflows/.github/workflows/deploy.yml@v1
+    with:
+      environment: production
+      app-name: my-application
+      version: ${{ github.sha }}
+    secrets:
+      DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      
+  notify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deployment completed"

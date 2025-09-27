@@ -2,7 +2,6 @@
 
 A Go CLI tool that identifies and helps resolve TOIL around migration and updating GitHub Actions workflows.
 
-
 ---
 **NOTE**
 
@@ -10,6 +9,26 @@ This project is in early development. The CLI and output format may change in fu
 There may be bugs and incomplete features.
 
 ---
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation) 
+- [Usage](#usage)
+- [Authentication](#authentication)
+- [Custom Rules and Advanced Configuration](#custom-rules-and-advanced-configuration)
+- [Output Format](#output-format)
+- [Supported Issue Types](#supported-issue-types)
+- [Version Alias Resolution](#version-alias-resolution)
+- [Architecture](#architecture)
+- [Examples and Templates](#examples-and-templates)
+- [Built-in Action Rules](#built-in-action-rules)
+- [Action Location Migration](#action-location-migration)
+- [Automated Migration Pull Requests](#automated-migration-pull-requests)
+- [Documentation](#documentation)
+- [Releases](#releases)
+- [Contributing](#contributing)
+- [License](#license)
 
 
 
@@ -106,6 +125,56 @@ For **private organizations**, ensure your token has:
 
 Use `--verbose` flag to see which endpoints are being used and troubleshoot access issues.
 
+## Custom Rules and Advanced Configuration
+
+### Creating Custom Rules Files
+
+actions-maintainer supports custom rules files to define organization-specific action policies:
+
+```json
+{
+  "version_rules": [
+    {
+      "repository": "my-org/custom-action",
+      "latest_version": "v2.0.0",
+      "minimum_version": "v1.5.0", 
+      "deprecated_versions": ["v1.0.0", "v1.1.0"],
+      "recommendation": "Upgrade for enhanced security features"
+    }
+  ],
+  "migration_rules": [
+    {
+      "from_repository": "old-org/action",
+      "to_repository": "new-org/action", 
+      "to_version": "v3.0.0",
+      "recommendation": "Action moved to new maintainer"
+    }
+  ]
+}
+```
+
+### Rule Types Supported
+
+1. **Version Rules**: Define latest, minimum, and deprecated versions
+2. **Migration Rules**: Handle repository location changes  
+3. **Workflow Migration Rules**: Migrate reusable workflows between repos
+4. **Parameter Transformation Rules**: Automatic parameter changes during upgrades
+
+### Advanced Filtering and Targeting
+
+```bash
+# Filter by repository name patterns
+./bin/actions-maintainer scan --owner myorg --filter "frontend-.*"
+
+# Target specific workflow types only
+./bin/actions-maintainer scan --owner myorg --workflow-only
+
+# Combine custom rules with filtering
+./bin/actions-maintainer scan --owner myorg --filter "legacy-.*" --rules-file migration-rules.json
+```
+
+See the `examples/` directory for complete templates and usage patterns.
+
 ## Output Format
 
 The tool outputs detailed JSON with the following structure:
@@ -190,7 +259,42 @@ The `patcher/` package provides sophisticated transformation capabilities includ
 - Workflow content patching with change tracking
 - Rule-based transformation logic for common actions
 
-## Examples
+## Examples and Templates
+
+The `examples/` directory contains comprehensive templates and examples for common scenarios:
+
+### 📁 [Examples Directory Structure](examples/)
+
+- **`examples/rules/`** - Ready-to-use rule files for different scenarios
+  - `basic-updates.json` - Update popular actions to latest versions
+  - `organization-migration.json` - Handle org changes and action moves
+  - `workflow-migration.json` - Migrate reusable workflows between repos
+  - `custom-transformations.json` - Parameter transformations during upgrades
+
+- **`examples/workflows/`** - Before/after workflow examples
+  - Shows actual transformations applied by the tool
+  - Demonstrates parameter changes, version updates, and migrations
+
+- **`examples/commands/`** - CLI command examples and scripts
+  - Common usage patterns and batch operations
+  - Step-by-step migration processes
+
+### 🚀 Quick Start Examples
+
+**Basic Action Updates:**
+```bash
+./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/basic-updates.json --create-prs
+```
+
+**Organization Migration:**
+```bash
+./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/organization-migration.json --create-prs --verbose
+```
+
+**Workflow Consolidation:**
+```bash
+./bin/actions-maintainer scan --owner company --workflow-only --rules-file examples/rules/workflow-migration.json --create-prs
+```
 
 ### Example Workflow Analysis
 
@@ -212,6 +316,25 @@ The tool will identify:
 - `actions/checkout@v3` → should be updated to `v4`
 - `actions/setup-node@v2` → should be updated to `v4` (high severity)
 - `actions/cache@v3` → should be updated to `v4`
+
+And with example rules, it will transform to:
+```yaml
+name: CI
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'  # Parameter renamed
+          cache: 'npm'        # Built-in caching
+      # Cache action removed - built into setup-node v4
+```
 
 ### Sample Output
 
@@ -351,7 +474,15 @@ The system ensures that both repository changes and version updates are applied 
 
 For detailed guides and advanced usage:
 
+- **[Examples Directory](examples/)** - Comprehensive rule templates, workflow examples, and CLI commands for common scenarios
 - **[Reusable Workflow Migration Guide](docs/reusable-workflow-migration-guide.md)** - Comprehensive guide for migrating reusable workflows from one repository to another
+
+### Getting Started Resources
+
+1. **New Users**: Start with `examples/rules/basic-updates.json` and `examples/commands/basic-scan.sh`
+2. **Organization Changes**: Use templates in `examples/rules/organization-migration.json` 
+3. **Workflow Consolidation**: Follow examples in `examples/rules/workflow-migration.json`
+4. **Custom Transformations**: See `examples/rules/custom-transformations.json` for parameter changes
 
 ## Releases
 
