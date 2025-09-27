@@ -1,0 +1,107 @@
+# Complex workflow - BEFORE actions-maintainer updates
+# Shows multiple outdated actions across different job types
+
+name: Complex CI/CD Pipeline
+on: 
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # OLD: checkout v3
+      - uses: actions/checkout@v3
+      
+      # OLD: setup-node v2 with manual caching
+      - uses: actions/setup-node@v2
+        with:
+          version: '18'
+      - uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: lint-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['16', '18', '20']
+    steps:
+      # OLD: checkout v3
+      - uses: actions/checkout@v3
+      
+      # OLD: setup-node v2  
+      - uses: actions/setup-node@v2
+        with:
+          version: ${{ matrix.node }}
+      - uses: actions/cache@v3
+        with:
+          path: ~/.npm  
+          key: test-${{ matrix.os }}-${{ matrix.node }}-${{ hashFiles('package-lock.json') }}
+      
+      - run: npm ci
+      - run: npm test
+      
+      # OLD: upload-artifact v3
+      - uses: actions/upload-artifact@v3
+        with:
+          name: coverage-${{ matrix.os }}-${{ matrix.node }}
+          path: coverage/
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      # OLD: checkout v3
+      - uses: actions/checkout@v3
+        with:
+          # Need full history for security scanning
+          fetch-depth: 0
+          
+      # OLD: CodeQL v2
+      - uses: github/codeql-action/init@v2
+        with:
+          languages: javascript
+          
+      # OLD: setup-node v2
+      - uses: actions/setup-node@v2
+        with:
+          version: '18'
+      - uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: security-${{ hashFiles('package-lock.json') }}
+      
+      - run: npm ci
+      - run: npm run build
+      
+      # OLD: CodeQL analyze v2  
+      - uses: github/codeql-action/analyze@v2
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [lint, test, security]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      # OLD: checkout v3
+      - uses: actions/checkout@v3
+      
+      # OLD: download-artifact v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: coverage-ubuntu-latest-18
+          path: ./coverage
+          
+      # OLD: Custom action from legacy organization
+      - uses: legacy-org/deploy-action@v1
+        with:
+          deploy-env: production
+          legacy-mode: true
+          target-region: us-east-1
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}

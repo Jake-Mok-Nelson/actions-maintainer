@@ -1,0 +1,51 @@
+# Basic CI workflow - BEFORE actions-maintainer updates
+# This workflow uses outdated action versions that should be updated
+
+name: CI
+on: 
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # OLD: actions/checkout@v3 should be updated to v4
+      - uses: actions/checkout@v3
+      
+      # OLD: actions/setup-node@v2 should be updated to v4 (CRITICAL - security issue)
+      - uses: actions/setup-node@v2
+        with:
+          version: '18'
+          
+      # OLD: Separate cache action needed with setup-node v2
+      - uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          
+      - run: npm ci
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest  
+    needs: test
+    steps:
+      # OLD: actions/checkout@v3 should be updated to v4
+      - uses: actions/checkout@v3
+      
+      # OLD: actions/setup-node@v2 should be updated to v4
+      - uses: actions/setup-node@v2
+        with:
+          version: '18'
+          
+      - run: npm ci
+      - run: npm run build
+      
+      # OLD: actions/upload-artifact@v3 should be updated to v4 (breaking changes)
+      - uses: actions/upload-artifact@v3
+        with:
+          name: build-files
+          path: dist/

@@ -1,0 +1,157 @@
+{
+  "_comment": "Custom transformation rules with parameter changes during action upgrades",
+  "_description": "Examples of complex transformations that modify action parameters during version upgrades or migrations. These require the patcher system to handle parameter additions, removals, and renames.",
+
+  "transformation_rules": [
+    {
+      "_comment": "actions/checkout v3 -> v4 with fetch-depth optimization",
+      "repository": "actions/checkout",
+      "latest_version": "v4",
+      "minimum_version": "v4",
+      "recommendation": "Upgrade to actions/checkout v4 with optimized fetch-depth for better performance. Add explicit fetch-depth: 0 for full history or fetch-depth: 1 for shallow clone."
+    },
+    {
+      "_comment": "actions/setup-node v2 -> v4 with caching and version parameter changes",
+      "repository": "actions/setup-node", 
+      "latest_version": "v4",
+      "deprecated_versions": ["v1", "v2", "v3"],
+      "recommendation": "Upgrade to actions/setup-node v4. Note: 'version' parameter renamed to 'node-version', and built-in caching replaces separate cache action."
+    },
+    {
+      "_comment": "actions/upload-artifact v3 -> v4 with breaking parameter changes",
+      "repository": "actions/upload-artifact",
+      "latest_version": "v4", 
+      "deprecated_versions": ["v1", "v2", "v3"],
+      "recommendation": "BREAKING CHANGE: actions/upload-artifact v4 removes 'path' parameter and uses 'name' + 'path' structure. Add 'overwrite: true' for replacing existing artifacts."
+    },
+    {
+      "_comment": "Custom action with parameter transformation during migration",
+      "repository": "legacy-org/custom-deploy",
+      "deprecated_versions": ["v1.0.0", "v1.1.0", "v1.2.0"], 
+      "migrate_to_repository": "modern-org/enhanced-deploy",
+      "migrate_to_version": "v2.0.0",
+      "recommendation": "Migration includes parameter transformations: 'deploy-env' -> 'environment', adds 'security-check: true', removes 'legacy-mode'"
+    }
+  ],
+
+  "_parameter_transformations": {
+    "_comment": "These are handled by the patcher system automatically",
+    
+    "checkout_v3_to_v4": {
+      "description": "actions/checkout v3 -> v4 transformations",
+      "add_parameters": {
+        "fetch-tags": false,
+        "_comment": "v4 introduces fetch-tags parameter for controlling tag fetching"
+      },
+      "recommended_additions": {
+        "fetch-depth": 1,
+        "_comment": "Explicitly set fetch-depth for performance (was implicit in v3)"
+      }
+    },
+
+    "setup_node_v2_to_v4": {
+      "description": "actions/setup-node v2 -> v4 transformations", 
+      "rename_parameters": {
+        "version": "node-version",
+        "_comment": "Parameter renamed in v4 for consistency"
+      },
+      "add_parameters": {
+        "cache": "npm",
+        "_comment": "Built-in caching eliminates need for separate actions/cache action"
+      },
+      "remove_parameters": {
+        "_comment": "If using separate cache action, remove it as v4 has built-in caching"
+      }
+    },
+
+    "upload_artifact_v3_to_v4": {
+      "description": "actions/upload-artifact v3 -> v4 transformations",
+      "breaking_changes": {
+        "_comment": "v4 has breaking changes requiring manual review"
+      },
+      "add_parameters": {
+        "overwrite": false,
+        "compression-level": 6,
+        "_comment": "v4 requires explicit overwrite setting and supports compression"
+      },
+      "parameter_structure_changes": {
+        "_comment": "v3: path parameter, v4: name + path structure change"
+      }
+    },
+
+    "custom_migration_example": {
+      "description": "Custom action migration with full parameter transformation",
+      "rename_parameters": {
+        "deploy-env": "environment",
+        "target-region": "aws-region" 
+      },
+      "add_parameters": {
+        "security-check": true,
+        "compliance-scan": true,
+        "notification-webhook": "${{ secrets.DEPLOY_WEBHOOK }}"
+      },
+      "remove_parameters": {
+        "legacy-mode": "Removed - no longer supported",
+        "deprecated-flag": "Functionality moved to environment parameter"
+      }
+    }
+  },
+
+  "_before_after_examples": {
+    "checkout_transformation": {
+      "before": {
+        "uses": "actions/checkout@v3"
+      },
+      "after": {
+        "uses": "actions/checkout@v4", 
+        "with": {
+          "fetch-depth": 1,
+          "fetch-tags": false
+        }
+      }
+    },
+
+    "setup_node_transformation": {
+      "before": {
+        "uses": "actions/setup-node@v2",
+        "with": {
+          "version": "18"
+        }
+      },
+      "after": {
+        "uses": "actions/setup-node@v4",
+        "with": {
+          "node-version": "18",
+          "cache": "npm"
+        }
+      }
+    },
+
+    "custom_action_migration": {
+      "before": {
+        "uses": "legacy-org/custom-deploy@v1",
+        "with": {
+          "deploy-env": "production", 
+          "target-region": "us-east-1",
+          "legacy-mode": true
+        }
+      },
+      "after": {
+        "uses": "modern-org/enhanced-deploy@v2",
+        "with": {
+          "environment": "production",
+          "aws-region": "us-east-1", 
+          "security-check": true,
+          "compliance-scan": true,
+          "notification-webhook": "${{ secrets.DEPLOY_WEBHOOK }}"
+        }
+      }
+    }
+  },
+
+  "_usage_examples": {
+    "transformation_scan": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/custom-transformations.json --verbose",
+    "apply_transformations": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/custom-transformations.json --create-prs",
+    "test_transformations": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/custom-transformations.json --output transformation-results.json"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "_comment": "Basic action update rules for common GitHub Actions",
+  "_description": "This file contains rules for updating popular GitHub Actions to their latest versions with high-impact security and performance improvements.",
+  
+  "version_rules": [
+    {
+      "_comment": "Update actions/checkout from any older version to v4",
+      "repository": "actions/checkout",
+      "latest_version": "v4",
+      "deprecated_versions": ["v1", "v2"],
+      "recommendation": "actions/checkout v4 includes improved security defaults, better performance, and enhanced Git LFS support. Critical security update for v1 and v2 users."
+    },
+    {
+      "_comment": "Update actions/setup-node to v4 - critical security improvement",
+      "repository": "actions/setup-node",
+      "latest_version": "v4", 
+      "minimum_version": "v3",
+      "deprecated_versions": ["v1", "v2"],
+      "recommendation": "actions/setup-node v4 includes Node.js version validation, improved caching, and security fixes. v2 has known vulnerabilities."
+    },
+    {
+      "_comment": "Update actions/setup-python to v5 for better performance",
+      "repository": "actions/setup-python",
+      "latest_version": "v5",
+      "minimum_version": "v4", 
+      "deprecated_versions": ["v1", "v2", "v3"],
+      "recommendation": "actions/setup-python v5 includes faster Python installation, better caching, and improved Windows support."
+    },
+    {
+      "_comment": "Update actions/upload-artifact to v4 - breaking changes in API",
+      "repository": "actions/upload-artifact",
+      "latest_version": "v4",
+      "minimum_version": "v3",
+      "deprecated_versions": ["v1", "v2"],
+      "recommendation": "actions/upload-artifact v4 uses a new artifacts backend with improved reliability and performance. Note: v4 has breaking changes from v3."
+    },
+    {
+      "_comment": "Update actions/download-artifact to v4 for consistency",
+      "repository": "actions/download-artifact", 
+      "latest_version": "v4",
+      "minimum_version": "v3",
+      "deprecated_versions": ["v1", "v2"],
+      "recommendation": "actions/download-artifact v4 matches the new artifacts backend from upload-artifact v4. Must be used together."
+    },
+    {
+      "_comment": "Update actions/cache to v4 for better performance",
+      "repository": "actions/cache",
+      "latest_version": "v4",
+      "minimum_version": "v3",
+      "deprecated_versions": ["v1", "v2"],
+      "recommendation": "actions/cache v4 includes performance improvements, better error handling, and cross-runner cache sharing."
+    },
+    {
+      "_comment": "Update actions/setup-go to v5 for Go toolchain improvements",
+      "repository": "actions/setup-go",
+      "latest_version": "v5",
+      "minimum_version": "v4",
+      "deprecated_versions": ["v1", "v2", "v3"],
+      "recommendation": "actions/setup-go v5 includes Go toolchain improvements, better caching, and enhanced module proxy support."
+    },
+    {
+      "_comment": "Update actions/setup-java to v4 for JDK improvements",  
+      "repository": "actions/setup-java",
+      "latest_version": "v4",
+      "minimum_version": "v3",
+      "deprecated_versions": ["v1", "v2"],
+      "recommendation": "actions/setup-java v4 includes JDK installation improvements, better version resolution, and enhanced Maven/Gradle caching."
+    },
+    {
+      "_comment": "Update github/codeql-action actions to v3 for security scanning",
+      "repository": "github/codeql-action/init",
+      "latest_version": "v3", 
+      "minimum_version": "v2",
+      "deprecated_versions": ["v1"],
+      "recommendation": "CodeQL v3 includes improved language detection, faster scanning, and enhanced security rule sets."
+    },
+    {
+      "_comment": "Update github/codeql-action/analyze to match init version",
+      "repository": "github/codeql-action/analyze", 
+      "latest_version": "v3",
+      "minimum_version": "v2", 
+      "deprecated_versions": ["v1"],
+      "recommendation": "CodeQL analyze v3 must match the init action version for compatibility."
+    }
+  ],
+
+  "_usage_examples": {
+    "basic_scan": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/basic-updates.json",
+    "create_prs": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/basic-updates.json --create-prs",
+    "verbose_output": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/basic-updates.json --verbose",
+    "save_results": "./bin/actions-maintainer scan --owner myorg --rules-file examples/rules/basic-updates.json --output results.json"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "_comment": "Reusable workflow migration rules for moving workflows between repositories",
+  "_description": "Use this for migrating reusable workflows when consolidating, reorganizing, or enhancing shared workflows across your organization.",
+
+  "workflow_migration_rules": [
+    {
+      "_comment": "Organization workflow consolidation example",
+      "repository": "old-company/project-workflows",
+      "workflow_path": ".github/workflows/ci.yml",
+      "migrate_to_repository": "new-company/central-workflows",
+      "migrate_to_version": "v1.0.0",
+      "migrate_to_path": ".github/workflows/enhanced-ci.yml",
+      "recommendation": "CI workflow consolidated into central-workflows repository with enhanced features and standardized patterns"
+    },
+    {
+      "_comment": "Project-specific to shared workflow migration",
+      "repository": "team-a/project-workflows", 
+      "workflow_path": ".github/workflows/deploy.yml",
+      "migrate_to_repository": "company/shared-workflows",
+      "migrate_to_version": "v2.0.0", 
+      "migrate_to_path": ".github/workflows/secure-deploy.yml",
+      "recommendation": "Deploy workflow migrated to shared repository with enhanced security controls and compliance checks"
+    },
+    {
+      "_comment": "Legacy workflow to modern implementation",
+      "repository": "legacy-org/old-workflows",
+      "workflow_path": ".github/workflows/test.yml", 
+      "migrate_to_repository": "modern-org/workflows",
+      "migrate_to_version": "v3.1.0",
+      "migrate_to_path": ".github/workflows/comprehensive-test.yml",
+      "recommendation": "Test workflow upgraded with modern testing patterns, parallel execution, and enhanced reporting"
+    },
+    {
+      "_comment": "Department consolidation example",
+      "repository": "engineering-dept/build-workflows",
+      "migrate_to_repository": "company/engineering-workflows", 
+      "migrate_to_version": "v1.2.0",
+      "recommendation": "All engineering workflows consolidated into single repository for better governance and maintenance"
+    }
+  ],
+
+  "version_rules": [
+    {
+      "_comment": "Mark old workflow repositories as deprecated",
+      "repository": "old-company/project-workflows", 
+      "latest_version": "v1.5.0",
+      "deprecated_versions": ["v1.0.0", "v1.1.0", "v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0"],
+      "migrate_to_repository": "new-company/central-workflows",
+      "migrate_to_version": "v1.0.0",
+      "recommendation": "Project workflows deprecated - migrate to central-workflows for enhanced features and support"
+    },
+    {
+      "_comment": "Legacy workflows requiring immediate migration", 
+      "repository": "legacy-org/old-workflows",
+      "latest_version": "v2.0.0",
+      "deprecated_versions": ["v1.0.0", "v1.1.0", "v1.2.0", "v2.0.0"],
+      "migrate_to_repository": "modern-org/workflows", 
+      "migrate_to_version": "v3.1.0",
+      "recommendation": "Legacy workflows end-of-life - immediate migration required for continued support and security updates"
+    }
+  ],
+
+  "_workflow_examples": {
+    "_comment": "Examples showing before and after workflow usage patterns",
+    "before_consolidation": {
+      "jobs": {
+        "test": {
+          "uses": "old-company/project-workflows/.github/workflows/ci.yml@v1",
+          "with": {
+            "node-version": "18",
+            "test-command": "npm test"
+          }
+        }
+      }
+    },
+    "after_consolidation": {
+      "jobs": {
+        "test": {
+          "uses": "new-company/central-workflows/.github/workflows/enhanced-ci.yml@v1",
+          "with": {
+            "node-version": "18",
+            "test-command": "npm test",
+            "enable-coverage": true,
+            "parallel-jobs": 4
+          }
+        }
+      }
+    }
+  },
+
+  "_migration_scenarios": {
+    "organization_change": {
+      "description": "When your organization changes names or consolidates",
+      "pattern": "old-org/* -> new-org/*",
+      "command": "./bin/actions-maintainer scan --owner affected-repos --workflow-only --rules-file examples/rules/workflow-migration.json --create-prs"
+    },
+    "workflow_consolidation": {
+      "description": "Consolidating multiple workflow repositories into one",
+      "pattern": "team-*/workflows -> company/shared-workflows", 
+      "command": "./bin/actions-maintainer scan --owner company --workflow-only --filter 'team-.*' --rules-file examples/rules/workflow-migration.json --create-prs"
+    },
+    "modernization": {
+      "description": "Upgrading legacy workflows to modern implementations",
+      "pattern": "legacy-*/workflows -> modern-*/workflows",
+      "command": "./bin/actions-maintainer scan --owner legacy-org --workflow-only --rules-file examples/rules/workflow-migration.json --verbose --create-prs"
+    }
+  },
+
+  "_usage_examples": {
+    "workflow_migration": "./bin/actions-maintainer scan --owner myorg --workflow-only --rules-file examples/rules/workflow-migration.json --create-prs",
+    "department_consolidation": "./bin/actions-maintainer scan --owner company --workflow-only --filter 'dept-.*' --rules-file examples/rules/workflow-migration.json --create-prs", 
+    "legacy_migration": "./bin/actions-maintainer scan --owner legacy-org --workflow-only --rules-file examples/rules/workflow-migration.json --verbose --create-prs"
+  }
+}
